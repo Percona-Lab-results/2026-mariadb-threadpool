@@ -1,1 +1,680 @@
-Test MariaDB report
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MariaDB Thread Pool Performance Analysis Report</title>
+<style>
+body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; margin-bottom: 10px; }
+h2 { color: #34495e; border-bottom: 2px solid #95a5a6; padding-bottom: 8px; margin-top: 30px; }
+h3 { color: #555; margin-top: 25px; }
+h4 { color: #666; margin-top: 20px; }
+table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+th { background-color: #3498db; color: white; font-weight: bold; }
+tr:nth-child(even) { background-color: #f9f9f9; }
+code { background-color: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+pre { background-color: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+strong { color: #2c3e50; }
+img { max-width: 100%; height: auto; margin: 20px 0; border: 1px solid #ddd; }
+ul, ol { margin: 15px 0; padding-left: 30px; }
+li { margin: 8px 0; }
+</style>
+</head>
+<body>
+<h1>MariaDB Thread Pool Performance Analysis Report</h1>
+<h2>1. Benchmark Overview</h2>
+<h3>1.1. Purpose and Scope</h3>
+<h3>Purpose</h3>
+<p>The primary purpose of this benchmark study is to evaluate how the MariaDB Thread Pool feature affects database performance under OLTP (Online Transaction Processing) read-write workloads. This investigation aims to provide empirical data on the performance characteristics of MariaDB servers operating with and without thread pool configuration across various workload conditions.</p>
+<br>
+<h3>Target Questions</h3>
+<p>This analysis seeks to answer the following key questions:</p>
+<br>
+<p>1. <strong>Raw TPS Scaling with Thread Count</strong></p>
+<p>   - How does transaction throughput (TPS) scale as the number of client threads increases from light (single-threaded) to heavily oversubscribed workloads (512 threads)?</p>
+<p>   - At what concurrency levels does performance plateau or degrade?</p>
+<br>
+<p>2. <strong>Thread Pool Performance Impact</strong></p>
+<p>   - What performance improvements (or degradations) does the MariaDB Thread Pool provide compared to default thread handling?</p>
+<p>   - Under which concurrency levels is the thread pool most beneficial?</p>
+<p>   - Are there scenarios where thread pool introduces overhead?</p>
+<br>
+<p>3. <strong>Effect of InnoDB Buffer Pool Size</strong></p>
+<p>   - How does varying the <code>innodb_buffer_pool_size</code> (2 GB, 12 GB, 32 GB) affect throughput?</p>
+<p>   - What is the performance difference between I/O-bound (2 GB) versus fully buffered (32 GB) workloads?</p>
+<p>   - Does thread pool effectiveness change across different memory configurations?</p>
+<br>
+<p>4. <strong>Version Comparison within MariaDB Family</strong></p>
+<p>   - How do MariaDB 11.8.6 and MariaDB 12.2.2 compare in terms of raw performance?</p>
+<p>   - Are there significant differences in thread pool behavior between these versions?</p>
+<p>   - Which version demonstrates better scalability characteristics?</p>
+<br>
+<h3>Scope</h3>
+<ul>
+<li><strong>Database Systems</strong>: MariaDB 11.8.6 and 12.2.2 (with and without Thread Pool)</li>
+<li><strong>Reference Systems</strong>: MySQL 8.4.8, MySQL 9.7.0-er2, Percona Server 8.4.8 (for comparative context)</li>
+<li><strong>Workload Type</strong>: Sysbench OLTP Read-Write</li>
+<li><strong>Concurrency Levels</strong>: 1, 4, 16, 32, 64, 128, 256, 512 client threads</li>
+<li><strong>Memory Tiers</strong>: 2 GB, 12 GB, 32 GB <code>innodb_buffer_pool_size</code></li>
+<li><strong>Thread Pool Configuration</strong>: <code>thread_pool_size=80</code>, <code>thread_pool_max_threads=2000</code></li>
+</ul>
+<br>
+<h3>1.2. Engines Under Test</h3>
+<table>
+<thead><tr>
+<th>Server</th>
+<th>Version</th>
+<th>Thread Handling</th>
+<th>Role</th>
+</tr></thead><tbody>
+<tr>
+<td><strong>MariaDB</strong></td>
+<td>11.8.6</td>
+<td>Default (one-thread-per-connection)</td>
+<td>Primary test subject</td>
+</tr>
+<tr>
+<td><strong>MariaDB</strong></td>
+<td>11.8.6</td>
+<td>Thread Pool (<code>thread_pool_size=80</code>)</td>
+<td>Primary test subject</td>
+</tr>
+<tr>
+<td><strong>MariaDB</strong></td>
+<td>12.2.2</td>
+<td>Default (one-thread-per-connection)</td>
+<td>Primary test subject</td>
+</tr>
+<tr>
+<td><strong>MariaDB</strong></td>
+<td>12.2.2</td>
+<td>Thread Pool (<code>thread_pool_size=80</code>)</td>
+<td>Primary test subject</td>
+</tr>
+<tr>
+<td><strong>MySQL</strong></td>
+<td>8.4.8</td>
+<td>Default</td>
+<td>Reference</td>
+</tr>
+<tr>
+<td><strong>MySQL</strong></td>
+<td>9.7.0-er2</td>
+<td>Default</td>
+<td>Reference</td>
+</tr>
+<tr>
+<td><strong>Percona Server</strong></td>
+<td>8.4.8-8</td>
+<td>Default</td>
+<td>Reference</td>
+</tr>
+</tbody></table>
+<br>
+<p><strong>Note</strong>: Reference servers (MySQL and Percona) are included for cross-product performance context but are not the primary focus of this benchmark.</p>
+<br>
+<h2>2. Key Findings</h2>
+<p>This section summarizes the critical performance insights derived from comprehensive testing across three memory configurations and eight concurrency levels.</p>
+<br>
+<h3>2.1. Thread Pool Effectiveness by Workload Type</h3>
+<p>Thread Pool performance benefits are strongly correlated with I/O intensity:</p>
+<br>
+<table>
+<thead><tr>
+<th>Workload Type</th>
+<th>Buffer Pool</th>
+<th>I/O Characteristic</th>
+<th>Thread Pool Benefit at 512 Threads</th>
+<th>Recommended Use Case</th>
+</tr></thead><tbody>
+<tr>
+<td><strong>I/O Bound</strong></td>
+<td>2 GB</td>
+<td>Heavy disk access (1:12 ratio)</td>
+<td><strong>+121-143%</strong> throughput</td>
+<td>Strongly recommended</td>
+</tr>
+<tr>
+<td><strong>Mixed</strong></td>
+<td>12 GB</td>
+<td>Partial buffering (1:2 ratio)</td>
+<td><strong>+79-83%</strong> throughput</td>
+<td>Recommended for high concurrency</td>
+</tr>
+<tr>
+<td><strong>Memory Bound</strong></td>
+<td>32 GB</td>
+<td>Fully buffered</td>
+<td><strong>-15% to +0%</strong> throughput</td>
+<td>Limited benefit</td>
+</tr>
+</tbody></table>
+<br>
+<p><strong>Insight:</strong> Thread Pool provides maximum value when I/O wait states are prevalent, allowing efficient thread coordination during disk operations. When workloads are fully memory-resident, the baseline one-thread-per-connection model can handle moderate concurrency effectively.</p>
+<br>
+<h3>2.2. Concurrency Behavior Patterns</h3>
+<p>Thread Pool exhibits a consistent performance profile across all configurations:</p>
+<br>
+<p><strong>Low Concurrency (1-32 threads):</strong></p>
+<ul>
+<li>Thread Pool introduces <strong>3-10% overhead</strong> due to coordination costs</li>
+<li>Overhead is most visible at 1-4 threads where native thread handling is most efficient</li>
+<li>Effect diminishes as concurrency approaches thread pool size (80 threads)</li>
+</ul>
+<br>
+<p><strong>Medium Concurrency (64-128 threads):</strong></p>
+<ul>
+<li>Thread Pool reaches <strong>performance parity</strong> with baseline</li>
+<li>Crossover point occurs around 80-128 threads depending on I/O pressure</li>
+<li>At 128 threads with 32GB buffer: baseline achieves peak performance (~10,600 TPS)</li>
+</ul>
+<br>
+<p><strong>High Concurrency (256-512 threads):</strong></p>
+<ul>
+<li>Thread Pool shows <strong>dramatic advantages</strong> under oversubscription</li>
+<li>At 512 threads: 79-143% throughput improvement depending on I/O intensity</li>
+<li>Prevents thread thrashing and context switching overhead</li>
+<li>Provides more predictable performance degradation curve</li>
+</ul>
+<br>
+<h3>2.3. MariaDB Version Comparison</h3>
+<p><strong>MariaDB 11.8.6 vs 12.2.2:</strong></p>
+<ul>
+<li>Both versions show <strong>similar Thread Pool behavior patterns</strong></li>
+<li>MariaDB 12.2.2 demonstrates stronger baseline performance at 128 threads (12GB buffer: 6,080 TPS vs 3,635 TPS for 11.8.6)</li>
+<li>Thread Pool benefits are <strong>version-independent</strong> at extreme concurrency levels</li>
+<li>Both versions achieve ~1,300 TPS at 512 threads with Thread Pool (12GB buffer)</li>
+</ul>
+<br>
+<p><strong>Conclusion:</strong> Upgrading from 11.8.6 to 12.2.2 provides baseline improvements, but Thread Pool effectiveness remains consistent across versions.</p>
+<br>
+<h3>2.4. Practical Deployment Recommendations</h3>
+<p><strong>When to Enable Thread Pool:</strong></p>
+<br>
+<p>✅ <strong>Recommended:</strong></p>
+<ul>
+<li>Applications with <strong>connection counts exceeding 128-200</strong> concurrent threads</li>
+<li><strong>I/O-bound workloads</strong> where dataset significantly exceeds buffer pool</li>
+<li>Environments with <strong>unpredictable connection spikes</strong> requiring stability</li>
+<li>Systems with <strong>limited CPU cores</strong> (≤16) serving many connections</li>
+</ul>
+<br>
+<p>❌ <strong>Not Recommended:</strong></p>
+<ul>
+<li>Workloads consistently operating at <strong><64 concurrent connections</strong></li>
+<li><strong>Fully memory-resident datasets</strong> with predictable, low concurrency</li>
+<li>OLTP applications prioritizing <strong>absolute peak throughput</strong> at optimal concurrency (~128 threads)</li>
+<li>Development/testing environments with low connection counts</li>
+</ul>
+<br>
+<p>⚠️ <strong>Use with Caution:</strong></p>
+<ul>
+<li>Mixed environments with both low and high concurrency patterns (slight overhead at low end)</li>
+<li>Applications sensitive to single-digit millisecond latency increases at low concurrency</li>
+</ul>
+<br>
+<h2>3. Test Environment & Infrastructure</h2>
+<h3>3.1. Hardware Specification</h3>
+<h4>System Information</h4>
+<ul>
+<li><strong>Platform</strong>: Linux</li>
+<li><strong>Release</strong>: Ubuntu 24.04 LTS (noble)</li>
+<li><strong>Kernel</strong>: 6.8.0-60-generic</li>
+<li><strong>Architecture</strong>: CPU = 64-bit, OS = 64-bit</li>
+<li><strong>Virtualized</strong>: No virtualization detected</li>
+</ul>
+<br>
+<h4>CPU</h4>
+<ul>
+<li><strong>Architecture</strong>: x86_64</li>
+<li><strong>CPU op-mode(s)</strong>: 32-bit, 64-bit</li>
+<li><strong>Byte Order</strong>: Little Endian</li>
+<li><strong>Processors</strong>: physical = 2, cores = 40, virtual = 80, hyperthreading = yes</li>
+<li><strong>Sockets</strong>: 2</li>
+<li><strong>Cores per socket</strong>: 20</li>
+<li><strong>Threads per core</strong>: 2</li>
+<li><strong>Model</strong>: 80x Intel(R) Xeon(R) Gold 6230 CPU @ 2.10GHz</li>
+<li><strong>Base Frequency</strong>: 2.10GHz</li>
+<li><strong>Max Frequency</strong>: 3.90GHz</li>
+<li><strong>Cache</strong>: 80x 28160 KB</li>
+</ul>
+<br>
+<h4>NUMA</h4>
+<ul>
+<li><strong>NUMA Nodes</strong>: 2</li>
+<li><strong>Node 0</strong>: 95288 MB (CPUs: 0-19, 40-59)</li>
+<li><strong>Node 1</strong>: 96748 MB (CPUs: 20-39, 60-79)</li>
+</ul>
+<br>
+<h4>Memory</h4>
+<ul>
+<li><strong>Total Memory</strong>: 187.5G</li>
+<li><strong>Swap Size</strong>: 8.0G</li>
+</ul>
+<br>
+<h4>Storage Configuration</h4>
+<p><strong>Primary Storage (SDA - System Disk)</strong></p>
+<ul>
+<li><strong>Device</strong>: /dev/sda</li>
+<li><strong>Total Size</strong>: 894.3 GB</li>
+<li><strong>Partitions</strong>:</li>
+</ul>
+<p>  - <code>/dev/sda1</code>: 1 GB, vfat, mounted at <code>/boot/efi</code></p>
+<p>  - <code>/dev/sda2</code>: 100 GB, ext4, mounted at <code>/boot</code></p>
+<p>  - <code>/dev/sda3</code>: 793.2 GB, ext4, mounted at <code>/</code> (root)</p>
+<br>
+<p><strong>Secondary Storage (NVMe)</strong></p>
+<ul>
+<li><strong>Device</strong>: /dev/nvme0n1</li>
+<li><strong>Total Size</strong>: 2.9 TB</li>
+<li><strong>Filesystem</strong>: ext4</li>
+<li><strong>Status</strong>: Available (not mounted)</li>
+</ul>
+<br>
+<h4>Network</h4>
+<ul>
+<li><strong>Controller</strong>: Intel Corporation Ethernet Controller X550 (dual port)</li>
+<li><strong>Active Interface</strong>: enp94s0f1</li>
+</ul>
+<p>  - <strong>Speed</strong>: 10000 Mb/s (10 Gbps)</p>
+<p>  - <strong>Duplex</strong>: Full</p>
+<br>
+<h3>3.2. Software Configuration</h3>
+<h4>Operating System</h4>
+<ul>
+<li><strong>Distribution</strong>: Ubuntu 24.04 LTS (noble)</li>
+<li><strong>Kernel</strong>: 6.8.0-60-generic</li>
+<li><strong>Architecture</strong>: 64-bit</li>
+</ul>
+<br>
+<h4>Containerization</h4>
+<ul>
+<li><strong>Docker</strong>: Used for database server deployment</li>
+<li><strong>Network Mode</strong>: <code>--network host</code> (native host networking, no NAT overhead)</li>
+</ul>
+<br>
+<h4>Benchmark Tool</h4>
+<ul>
+<li><strong>Sysbench</strong>: Version 1.0.20</li>
+<li><strong>LuaJIT</strong>: 2.1.0-beta3 (system)</li>
+<li><strong>Test Script</strong>: OLTP Read-Write (built-in)</li>
+</ul>
+<br>
+<h4>Telemetry Tools</h4>
+<p>System performance metrics were collected continuously during each benchmark run:</p>
+<br>
+<ul>
+<li><strong>iostat</strong>: I/O statistics monitoring</li>
+<li><strong>vmstat</strong>: Virtual memory and system statistics</li>
+<li><strong>mpstat</strong>: Multi-processor statistics</li>
+<li><strong>dstat</strong>: Combined system resource statistics</li>
+<li><strong>Sampling Interval</strong>: 1 second for all tools</li>
+<li><strong>Collection Period</strong>: Full duration of each 15-minute test run</li>
+</ul>
+<br>
+<h3>3.3. Containerization Strategy</h3>
+<p>Each MariaDB engine was run as a Docker container using official images from the <code>mariadb</code> repository. The host network mode was used to avoid bridge networking overhead. A fresh container was started for each engine/tier combination using the following sequence:</p>
+<br>
+<p>1. <strong>Stop and remove</strong> any existing benchmark container</p>
+<p>2. <strong>Detect actual server version</strong> by connecting and running <code>SELECT VERSION()</code></p>
+<p>3. <strong>Generate a version-specific configuration file</strong> (see Section 3)</p>
+<p>4. <strong>Restart the container</strong> with the new configuration mounted</p>
+<p>5. <strong>Wait for the server to become ready</strong> (mariadb-admin ping loop)</p>
+<p>6. <strong>Verify InnoDB buffer pool size</strong> matches the intended tier (hard abort on mismatch)</p>
+<br>
+<p>This approach ensured that each test run started with a clean state and the correct configuration parameters were applied before benchmark execution.</p>
+<br>
+<h3>3.4. Buffer Pool Tiers</h3>
+<p>With the database size of 24 GB, three InnoDB buffer pool sizes were tested, each representing a distinct workload characteristic:</p>
+<br>
+<table>
+<thead><tr>
+<th>Tier (innodb_buffer_pool_size)</th>
+<th>Workload Character</th>
+</tr></thead><tbody>
+<tr>
+<td><strong>2 GB</strong></td>
+<td><strong>I/O bound</strong> — dataset substantially exceeds buffer pool (1:12 ratio); heavy read amplification</td>
+</tr>
+<tr>
+<td><strong>12 GB</strong></td>
+<td><strong>Mixed</strong> — partial dataset fits in memory (1:2 ratio); realistic production scenario</td>
+</tr>
+<tr>
+<td><strong>32 GB</strong></td>
+<td><strong>In-memory</strong> — full working set fits; CPU and locking are primary bottlenecks</td>
+</tr>
+</tbody></table>
+<br>
+<p>These tiers were selected to evaluate MariaDB performance across different memory pressure scenarios, from heavily disk-constrained (2 GB) to fully memory-resident (32 GB) workloads.</p>
+<br>
+<h2>4. Database Configuration</h2>
+<p>All MariaDB servers were configured with production-grade settings optimized for OLTP workloads. The configuration below represents the Thread Pool variant; non-Thread Pool servers used identical settings except for thread handling mode.</p>
+<br>
+<h3>4.1. General Settings</h3>
+<pre><code>
+performance_schema              = OFF
+skip-name-resolve               = ON
+max_connections                 = 2000
+max_connect_errors              = 1000000
+max_prepared_stmt_count         = 1000000
+</code></pre>
+<br>
+<h3>4.2. Thread Handling</h3>
+<p><strong>Thread Pool Configuration (mariadb-thp servers):</strong></p>
+<pre><code>
+thread_handling                 = pool-of-threads
+thread_pool_size                = 80                # match physical core count
+thread_pool_max_threads         = 2000
+thread_stack                    = 512K
+thread_cache_size               = 256
+back_log                        = 4096
+</code></pre>
+<br>
+<p><strong>Default Configuration (mariadb servers):</strong></p>
+<pre><code>
+thread_handling                 = one-thread-per-connection
+thread_cache_size               = 256
+thread_stack                    = 512K
+back_log                        = 4096
+</code></pre>
+<br>
+<h3>4.3. InnoDB Buffer Pool</h3>
+<p>Buffer pool size varied by tier (see Section 3.4):</p>
+<pre><code>
+innodb_buffer_pool_size         = 2G | 12G | 32G
+</code></pre>
+<br>
+<h3>4.4. InnoDB I/O Configuration</h3>
+<p>Optimized for NVMe storage with high concurrency:</p>
+<pre><code>
+innodb_io_capacity              = 10000
+innodb_io_capacity_max          = 20000
+innodb_read_io_threads          = 16
+innodb_write_io_threads         = 16
+innodb_use_native_aio           = ON
+</code></pre>
+<br>
+<h3>4.5. InnoDB Durability & Logging</h3>
+<p>Full ACID compliance with transaction log optimization:</p>
+<pre><code>
+innodb_log_file_size            = 4G
+innodb_log_buffer_size          = 256M
+innodb_flush_log_at_trx_commit  = 1                 # full ACID
+innodb_doublewrite              = ON
+sync_binlog                     = 1
+</code></pre>
+<br>
+<h3>4.6. InnoDB Concurrency & OLTP Tuning</h3>
+<pre><code>
+innodb_stats_on_metadata        = OFF
+innodb_open_files               = 65536
+innodb_lock_wait_timeout        = 50
+innodb_rollback_on_timeout      = ON
+innodb_snapshot_isolation       = OFF               # MariaDB 12.x+
+</code></pre>
+<br>
+<h3>4.7. Per-Session Buffers</h3>
+<p>Conservative settings to support high connection counts:</p>
+<pre><code>
+sort_buffer_size                = 4M
+join_buffer_size                = 4M
+read_buffer_size                = 2M
+read_rnd_buffer_size            = 4M
+tmp_table_size                  = 256M
+max_heap_table_size             = 256M
+</code></pre>
+<br>
+<h3>4.8. Table & File Handles</h3>
+<pre><code>
+table_open_cache                = 65536
+table_definition_cache          = 65536
+open_files_limit                = 1000000
+table_open_cache_instances      = 64
+</code></pre>
+<br>
+<h3>4.9. Binary Logging</h3>
+<p>Enabled for production-realistic overhead measurement:</p>
+<pre><code>
+log_bin                         = /var/lib/mysql/mysql-bin
+binlog_format                   = ROW
+binlog_row_image                = MINIMAL
+binlog_cache_size               = 4M
+max_binlog_size                 = 512M
+</code></pre>
+<br>
+<p><strong>Note:</strong> The complete configuration file is available in the benchmark logs directory as <code>TierXG.cnf.txt</code> for each tested configuration.</p>
+<br>
+<h2>5. Benchmark Workload</h2>
+<h3>5.1. Warmup Protocol</h3>
+<p>Before each production benchmark run, the database underwent a two-phase warmup sequence to ensure consistent starting conditions:</p>
+<br>
+<table>
+<thead><tr>
+<th>Phase</th>
+<th>Duration</th>
+<th>Purpose</th>
+</tr></thead><tbody>
+<tr>
+<td><strong>Warmup A — Read-Only</strong></td>
+<td>180 s (3 min)</td>
+<td>Populate buffer pool with hot pages</td>
+</tr>
+<tr>
+<td><strong>Warmup B — Read-Write</strong></td>
+<td>600 s (10 min)</td>
+<td>Steady-state redo log & dirty page ratio (skipped for RO)</td>
+</tr>
+</tbody></table>
+<br>
+<p><strong>Note:</strong> The proposed warmup values are determined experimentally and are sufficient for the hardware configuration used for the benchmarking. However, in case of much slower hosts the user will need to adjust them by editing scripts.</p>
+<br>
+<h3>5.2. Measurement Run</h3>
+<p>Following the warmup phase, each benchmark execution ran for <strong>900 seconds (15 minutes)</strong> with performance metrics captured at 1-second granularity. During execution, system-level telemetry tools (iostat, vmstat, mpstat, dstat) collected resource utilization data in parallel.</p>
+<br>
+<h4>Data Collection Strategy</h4>
+<p>The results presented in this report represent a <strong>single measurement per configuration</strong>. To validate result stability and confirm steady-state operation, we conducted selective repeat runs (2nd and 3rd iterations) across representative server and memory tier combinations. These validation runs consistently confirmed the reproducibility of the initial measurements.</p>
+<br>
+<p>The validation dataset was intentionally excluded from publication to maintain data accessibility. Given that each baseline measurement produces multiple output files (sysbench results, iostat, vmstat, mpstat, dstat, and configuration logs), the inclusion of validation runs would have multiplied the dataset size significantly, creating an unwieldy collection of thousands of files that would be difficult to navigate and distribute.</p>
+<br>
+<h4>Steady-State Verification</h4>
+<p><strong>Read Operations:</strong> Steady state for read workloads was verified by monitoring InnoDB buffer pool metrics and OS-level I/O read counters. The system was considered stable when physical reads dropped to near-zero after the warmup period, indicating the working set was fully cached.</p>
+<br>
+<p><strong>Write Operations:</strong> For write-intensive phases, stability was determined by observing transaction throughput and latency metrics until they reached consistent values without significant drift.</p>
+<br>
+<p><strong>Known Limitation:</strong> While short-term metric stability (15 minutes) provides confidence in measurement consistency, it does not entirely eliminate the possibility of longer-term background activity such as adaptive flushing, change buffer merges, or checkpoint behavior that might emerge during extended multi-day operations. The chosen measurement window represents a balance between statistical confidence and practical benchmarking constraints.</p>
+<br>
+<h2>6. Metrics & Reporting</h2>
+<h3>6.1. Primary Metrics</h3>
+<table>
+<thead><tr>
+<th>Metric</th>
+<th>Definition</th>
+</tr></thead><tbody>
+<tr>
+<td><strong>TPS</strong></td>
+<td>Transactions per second (complete BEGIN/COMMIT cycles)</td>
+</tr>
+<tr>
+<td><strong>QPS</strong></td>
+<td>Queries per second (≈20× TPS for this workload)</td>
+</tr>
+</tbody></table>
+<br>
+<h3>6.2. Derived Metrics</h3>
+<p>Performance analysis includes:</p>
+<ul>
+<li><strong>QPS/TPS gain relative to additional RAM</strong>: Throughput improvement when increasing <code>innodb_buffer_pool_size</code> from one tier to another</li>
+<li><strong>QPS/TPS gain relative to thread count increase</strong>: Scalability characteristics as concurrent client connections grow</li>
+</ul>
+<br>
+<h3>6.3. Output Files</h3>
+<p><strong>Per-run telemetry files:</strong></p>
+<ul>
+<li><code>.sysbench.txt</code> — Sysbench benchmark results</li>
+<li><code>.iostat.txt</code> — I/O statistics</li>
+<li><code>.vmstat.txt</code> — Virtual memory and system statistics</li>
+<li><code>.mpstat.txt</code> — Multi-processor utilization</li>
+<li><code>.dstat.txt</code> — Combined system resource monitoring</li>
+</ul>
+<br>
+<p><strong>Per-server configuration files:</strong></p>
+<ul>
+<li><code>.cnf.txt</code> — MariaDB configuration file</li>
+<li><code>.vars.txt</code> — Server variables (<code>SHOW VARIABLES</code>)</li>
+<li><code>.status.txt</code> — Server status (<code>SHOW STATUS</code>)</li>
+<li><code>pt-mysql-summary.txt</code> — Percona Toolkit system summary</li>
+</ul>
+<br>
+<h2>7. Measurement Results</h2>
+<p>This section presents the throughput measurements across all tested configurations. Results are organized by memory tier, with detailed performance comparisons across thread counts and database versions.</p>
+<br>
+<h3>7.1. Performance Summary Tables</h3>
+<p>The following tables show TPS (Transactions Per Second) values for each configuration. Color coding indicates relative performance within each memory tier:</p>
+<ul>
+<li><strong>Green cells</strong>: High performance relative to other configurations at the same thread count</li>
+<li><strong>Yellow/Orange cells</strong>: Mid-range performance</li>
+<li><strong>Red cells</strong>: Lower performance relative to other configurations</li>
+</ul>
+<br>
+<p>Bar length is proportional to the actual value relative to the maximum in each column, making it easy to visually compare performance across different servers at the same concurrency level.</p>
+<br>
+<h3>7.2. 2GB Buffer Pool Results</h3>
+<h4>7.2.1. Performance Table</h4>
+<p><img src="graphs_out/table_tps_2g.png" alt="TPS Table - 2GB Buffer Pool"></p>
+<br>
+<h4>7.2.2. Throughput Graph</h4>
+<p><img src="graphs_out/throughput_tps_2g.png" alt="TPS Graph - 2GB Buffer Pool"></p>
+<br>
+<h4>7.2.3. Thread Pool Effect Analysis (2GB - I/O Bound)</h4>
+<p>At the 2GB buffer pool configuration, the database is heavily I/O-bound with the 24GB dataset substantially exceeding available memory (1:12 ratio). This creates significant disk access pressure and tests the thread pool's ability to manage I/O wait states.</p>
+<br>
+<p><strong>Key Observations:</strong></p>
+<br>
+<p><strong>Low Concurrency (1-16 threads):</strong></p>
+<ul>
+<li>Thread Pool shows <strong>minimal to slight negative impact</strong> at very low thread counts</li>
+<li>MariaDB 11.8.6: 142 TPS (baseline) vs 138 TPS (Thread Pool) at 1 thread (-3%)</li>
+<li>MariaDB 12.2.2: 142 TPS (baseline) vs 135 TPS (Thread Pool) at 1 thread (-5%)</li>
+<li>The Thread Pool overhead is visible but marginal when concurrency is naturally low</li>
+</ul>
+<br>
+<p><strong>Medium Concurrency (32-64 threads):</strong></p>
+<ul>
+<li>Thread Pool maintains <strong>competitive performance</strong> with baseline</li>
+<li>At 64 threads, both versions perform similarly (4,100-4,200 TPS range)</li>
+<li>No significant advantage or disadvantage observed in this range</li>
+</ul>
+<br>
+<p><strong>High Concurrency (128-512 threads):</strong></p>
+<ul>
+<li>Thread Pool demonstrates <strong>significant advantage</strong> under oversubscription</li>
+<li>MariaDB 11.8.6 at 512 threads: 266 TPS (baseline) vs <strong>587 TPS (Thread Pool)</strong> - <strong>+121% improvement</strong></li>
+<li>MariaDB 12.2.2 at 512 threads: 247 TPS (baseline) vs <strong>600 TPS (Thread Pool)</strong> - <strong>+143% improvement</strong></li>
+<li>At 256 threads: Thread Pool maintains ~600 TPS while baseline drops to ~566-610 TPS</li>
+</ul>
+<br>
+<p><strong>Conclusion:</strong> Under I/O-bound conditions, the Thread Pool shows its primary benefit at high concurrency levels (128+ threads) where it prevents context switching overhead and thread thrashing. The ability to maintain 2-2.4x higher throughput at 512 threads demonstrates effective thread management when the system is heavily oversubscribed.</p>
+<br>
+<h3>7.3. 12GB Buffer Pool Results</h3>
+<h4>7.3.1. Performance Table</h4>
+<p><img src="graphs_out/table_tps_12g.png" alt="TPS Table - 12GB Buffer Pool"></p>
+<br>
+<h4>7.3.2. Throughput Graph</h4>
+<p><img src="graphs_out/throughput_tps_12g.png" alt="TPS Graph - 12GB Buffer Pool"></p>
+<br>
+<h4>7.3.3. Thread Pool Effect Analysis (12GB - Mixed Workload)</h4>
+<p>At 12GB buffer pool, approximately half of the 24GB dataset fits in memory (1:2 ratio), creating a realistic mixed workload with both cached and disk-bound operations. This represents a common production scenario.</p>
+<br>
+<p><strong>Key Observations:</strong></p>
+<br>
+<p><strong>Low Concurrency (1-16 threads):</strong></p>
+<ul>
+<li>Thread Pool shows <strong>minor overhead</strong> at low thread counts</li>
+<li>MariaDB 11.8.6: 226 TPS (baseline) vs 215 TPS (Thread Pool) at 1 thread (-5%)</li>
+<li>MariaDB 12.2.2: 226 TPS (baseline) vs 213 TPS (Thread Pool) at 1 thread (-6%)</li>
+<li>At 16 threads: 3,085 TPS (baseline) vs 2,887 TPS (Thread Pool) for 11.8.6 (-6%)</li>
+<li>The overhead diminishes as concurrency increases toward the thread pool size</li>
+</ul>
+<br>
+<p><strong>Medium Concurrency (32-64 threads):</strong></p>
+<ul>
+<li>Thread Pool reaches <strong>performance parity</strong> with baseline</li>
+<li>At 64 threads: 7,302 TPS (baseline) vs 7,119 TPS (Thread Pool) for 11.8.6 (-2.5%)</li>
+<li>At 64 threads: 7,364 TPS (baseline) vs 7,143 TPS (Thread Pool) for 12.2.2 (-3%)</li>
+<li>Performance gap narrows significantly as concurrency approaches thread pool size (80)</li>
+</ul>
+<br>
+<p><strong>High Concurrency (128-512 threads):</strong></p>
+<ul>
+<li>Thread Pool delivers <strong>substantial gains</strong> under oversubscription</li>
+<li>MariaDB 11.8.6 at 128 threads: 3,635 TPS (baseline) vs <strong>4,234 TPS (Thread Pool)</strong> - <strong>+16% improvement</strong></li>
+<li>MariaDB 12.2.2 at 128 threads: 6,080 TPS (baseline) vs <strong>5,455 TPS (Thread Pool)</strong> - note: 12.2.2 baseline performs exceptionally well here</li>
+<li>At 512 threads: 727 TPS (baseline) vs <strong>1,302 TPS (Thread Pool)</strong> for 11.8.6 - <strong>+79% improvement</strong></li>
+<li>At 512 threads: 704 TPS (baseline) vs <strong>1,285 TPS (Thread Pool)</strong> for 12.2.2 - <strong>+83% improvement</strong></li>
+</ul>
+<br>
+<p><strong>Version Comparison:</strong></p>
+<ul>
+<li>MariaDB 12.2.2 shows stronger baseline performance at moderate concurrency (128 threads) compared to 11.8.6</li>
+<li>Both versions benefit similarly from Thread Pool at extreme oversubscription (256-512 threads)</li>
+<li>Thread Pool provides more consistent performance degradation curve as concurrency increases</li>
+</ul>
+<br>
+<p><strong>Conclusion:</strong> In mixed I/O scenarios, Thread Pool shows a classic trade-off pattern: slight overhead at low concurrency (where it's unnecessary) in exchange for dramatic improvements at high concurrency (where it prevents thrashing). The crossover point occurs around 80-128 threads, after which Thread Pool consistently outperforms baseline, with nearly 2x throughput at 512 threads.</p>
+<br>
+<h3>7.4. 32GB Buffer Pool Results</h3>
+<h4>7.4.1. Performance Table</h4>
+<p><img src="graphs_out/table_tps_32g.png" alt="TPS Table - 32GB Buffer Pool"></p>
+<br>
+<h4>7.4.2. Throughput Graph</h4>
+<p><img src="graphs_out/throughput_tps_32g.png" alt="TPS Graph - 32GB Buffer Pool"></p>
+<br>
+<h4>7.4.3. Thread Pool Effect Analysis (32GB - Memory Bound)</h4>
+<p>At 32GB buffer pool, the entire 24GB working set fits in memory, eliminating I/O bottlenecks. Performance is primarily constrained by CPU cycles, lock contention, and context switching overhead.</p>
+<br>
+<p><strong>Key Observations:</strong></p>
+<br>
+<p><strong>Low Concurrency (1-16 threads):</strong></p>
+<ul>
+<li>Thread Pool shows <strong>negligible overhead</strong> in fully memory-resident workloads</li>
+<li>MariaDB 11.8.6: 517 TPS (baseline) vs 412 TPS (Thread Pool) at 1 thread (-20%)</li>
+<li>MariaDB 12.2.2: 419 TPS (baseline) vs 419 TPS (Thread Pool) at 1 thread (0%)</li>
+<li>At 4 threads: ~1,574 TPS (baseline) vs ~1,418 TPS (Thread Pool) for 11.8.6 (-10%)</li>
+<li>Thread Pool overhead is more visible at very low concurrency where coordination costs matter</li>
+</ul>
+<br>
+<p><strong>Medium Concurrency (16-64 threads):</strong></p>
+<ul>
+<li>Thread Pool approaches <strong>performance parity</strong> as concurrency increases</li>
+<li>At 32 threads: 5,844 TPS (baseline) vs 5,348 TPS (Thread Pool) for 11.8.6 (-8%)</li>
+<li>At 64 threads: 8,298 TPS (baseline) vs 7,869 TPS (Thread Pool) for 11.8.6 (-5%)</li>
+<li>At 64 threads: 8,587 TPS (baseline) vs <strong>10,066 TPS (Thread Pool)</strong> for MySQL 8.4.8 - reference server shows variation</li>
+<li>Performance gap narrows steadily as thread count approaches pool size</li>
+</ul>
+<br>
+<p><strong>High Concurrency (128-512 threads):</strong></p>
+<ul>
+<li>Thread Pool shows <strong>mixed results</strong> but generally maintains better stability</li>
+<li>MariaDB 11.8.6 at 128 threads: <strong>10,694 TPS (baseline)</strong> vs 10,232 TPS (Thread Pool) - baseline peaks here</li>
+<li>MariaDB 12.2.2 at 128 threads: <strong>10,273 TPS (baseline)</strong> vs 5,372 TPS (Thread Pool) - notable divergence</li>
+<li>At 256 threads: 5,973 TPS (baseline) vs 5,330 TPS (Thread Pool) for 11.8.6</li>
+<li>At 512 threads: 3,921 TPS (baseline) vs 3,318 TPS (Thread Pool) for 11.8.6 (-15%)</li>
+</ul>
+<br>
+<p><strong>Critical Insight:</strong></p>
+<p>Unlike I/O-bound scenarios, the memory-resident workload shows <strong>less dramatic Thread Pool benefits</strong>. The baseline (one-thread-per-connection) model performs exceptionally well at 128 threads, suggesting that when I/O wait is eliminated, the system can handle moderate oversubscription effectively without thread pool management.</p>
+<br>
+<p><strong>Lock Contention Factor:</strong></p>
+<ul>
+<li>At 128 threads, baseline achieves peak performance (~10,000-10,700 TPS) across both MariaDB versions</li>
+<li>Beyond 128 threads, both baseline and Thread Pool degrade, indicating lock contention becomes the primary bottleneck</li>
+<li>Thread Pool does not solve lock contention, but provides more predictable degradation</li>
+</ul>
+<br>
+<p><strong>Conclusion:</strong> In memory-resident workloads, Thread Pool provides less dramatic benefits compared to I/O-bound scenarios. The baseline model can effectively handle up to ~128 threads when I/O is not a bottleneck. Thread Pool's advantage shifts from "preventing I/O thrashing" to "providing more predictable behavior under extreme oversubscription," but the absolute performance gains are smaller. For workloads that fit entirely in memory, Thread Pool may not be necessary unless connection counts regularly exceed 200-300 concurrent connections.</p>
+<br>
+</body>
+</html>

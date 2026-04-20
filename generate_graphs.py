@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 from matplotlib.ticker import FuncFormatter
+import matplotlib.patches as mpatches
+import numpy as np
 
 # Configuration
 BENCHMARK_DIR = Path(__file__).parent / "benchmark_logs"
@@ -230,6 +232,163 @@ def create_graph(mem_tier, data, metric='tps'):
     return plt
 
 
+def create_heatmap_table(mem_tier, data):
+    """Create a heatmap table showing TPS values for all servers and thread counts."""
+    # Prepare data matrix
+    servers = sorted(data.keys(), key=lambda x: (0 if 'MariaDB' in x else 1, x))
+    thread_counts = THREAD_COUNTS
+
+    # Create matrix of TPS values
+    tps_matrix = []
+    server_labels = []
+
+    for server in servers:
+        server_data = data[server]
+        if not server_data['threads']:
+            continue
+
+        # Create a mapping of thread count to TPS
+        tps_map = dict(zip(server_data['threads'], server_data['tps']))
+        row = [tps_map.get(tc, 0) for tc in thread_counts]
+        tps_matrix.append(row)
+        server_labels.append(server)
+
+    if not tps_matrix:
+        return None
+
+    tps_array = np.array(tps_matrix)
+
+    # Column background colors (different pastel color for each thread count)
+    col_bg_colors = [
+        '#E8F4F8',  # Light blue
+        '#E8F8E8',  # Light green
+        '#FFF4E0',  # Light orange
+        '#F8E8F8',  # Light purple
+        '#E0F8F8',  # Light cyan
+        '#FFE8E8',  # Light red
+        '#E8E8FF',  # Light blue-purple
+        '#F0FFE8',  # Light yellow-green
+    ]
+
+    # Create figure - 1600px width at 100 DPI = 16 inches
+    fig = plt.figure(figsize=(16, len(server_labels) * 0.7 + 2.5), dpi=100)
+    # Remove all margins/padding
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    ax = fig.add_subplot(111)
+
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis('off')
+
+    # Calculate dimensions
+    n_rows = len(server_labels)
+    n_cols = len(thread_counts)
+
+    # Table occupies bottom 80% of figure, title in top 20%
+    table_height = 0.78
+    table_bottom = 0.02
+    table_top = table_bottom + table_height
+
+    row_label_width = 0.28  # Width for server names column
+    col_width = (1.0 - row_label_width) / n_cols
+    row_height = table_height / (n_rows + 1)  # +1 for header
+
+    start_y = table_top  # Start table header at top of table area
+    start_x = row_label_width
+
+    # Draw title well above the table
+    title = f'TPS by Thread Count, {mem_tier}B Buffer Pool (Read-Write, Local)'
+    ax.text(0.5, 0.95, title, ha='center', va='center', fontsize=18, fontweight='bold')
+
+    # Draw header row
+    for col_idx, tc in enumerate(thread_counts):
+        x = start_x + col_idx * col_width
+        y = start_y
+
+        rect = mpatches.Rectangle((x, y), col_width, row_height,
+                                 facecolor='#D0E0F0', edgecolor='black', linewidth=2)
+        ax.add_patch(rect)
+        ax.text(x + col_width/2, y + row_height/2, f'{tc}t',
+               ha='center', va='center', fontweight='bold', fontsize=11)
+
+    # Draw "Engine" label
+    rect = mpatches.Rectangle((0, start_y), row_label_width, row_height,
+                             facecolor='#D0E0F0', edgecolor='black', linewidth=2)
+    ax.add_patch(rect)
+    ax.text(row_label_width/2, start_y + row_height/2, 'Engine',
+           ha='center', va='center', fontweight='bold', fontsize=11)
+
+    # Draw data rows
+    for row_idx, server in enumerate(server_labels):
+        y = start_y - (row_idx + 1) * row_height
+
+        # Draw row label (server name)
+        label_bg = '#E8F4E8' if 'MariaDB' in server else '#F0F0F0'
+        rect = mpatches.Rectangle((0, y), row_label_width, row_height,
+                                 facecolor=label_bg, edgecolor='black', linewidth=2)
+        ax.add_patch(rect)
+        ax.text(0.01, y + row_height/2, server,
+               ha='left', va='center', fontweight='bold', fontsize=11)
+
+        # Draw data cells with bars
+        for col_idx in range(n_cols):
+            x = start_x + col_idx * col_width
+            value = tps_array[row_idx, col_idx]
+
+            # Column background
+            bg_color = col_bg_colors[col_idx % len(col_bg_colors)]
+            rect = mpatches.Rectangle((x, y), col_width, row_height,
+                                     facecolor=bg_color, edgecolor='black', linewidth=1.5)
+            ax.add_patch(rect)
+
+            if value == 0:
+                ax.text(x + col_width/2, y + row_height/2, '—',
+                       ha='center', va='center', fontsize=10)
+                continue
+
+            # Calculate bar size as proportion of max value in column
+            col_values = tps_array[:, col_idx]
+            col_values = col_values[col_values > 0]
+
+            if len(col_values) > 0:
+                vmin, vmax = col_values.min(), col_values.max()
+                # Bar size is directly proportional to value relative to max
+                norm_value = value / vmax if vmax > 0 else 1.0
+
+                # Bar color based on ranking (min to max range)
+                if vmax > vmin:
+                    color_norm = (value - vmin) / (vmax - vmin)
+                else:
+                    color_norm = 1.0  # All same, make green
+            else:
+                norm_value = 1.0
+                color_norm = 1.0
+
+            # Color gradient: red (worst/min) -> yellow (mid) -> green (best/max)
+            if color_norm < 0.5:
+                r, g, b = 1.0, color_norm * 2, 0.0
+            else:
+                r, g, b = 1.0 - (color_norm - 0.5) * 2, 1.0, 0.0
+
+            # Draw bar proportional to value
+            bar_max_width = col_width * 0.85
+            bar_x = x + 0.05 * col_width
+            bar_y = y + row_height * 0.3
+            bar_height = row_height * 0.15
+
+            bar_width = norm_value * bar_max_width
+            bar_rect = mpatches.Rectangle((bar_x, bar_y), bar_width, bar_height,
+                                         facecolor=(r, g, b, 0.8),
+                                         edgecolor='none')
+            ax.add_patch(bar_rect)
+
+            # Draw text value
+            ax.text(x + col_width/2, y + row_height * 0.65, f'{int(value):,}',
+                   ha='center', va='center', fontsize=15, fontweight='normal')
+
+    return fig
+
+
 def main():
     """Main function to generate all graphs."""
     # Create output directory
@@ -257,6 +416,15 @@ def main():
         plt_tps.savefig(tps_filename, dpi=100, bbox_inches='tight')
         plt.close()
         print(f"    Saved: {tps_filename}")
+
+        # Generate heatmap table
+        fig_table = create_heatmap_table(mem_tier, data[mem_tier])
+        if fig_table:
+            table_filename = OUTPUT_DIR / f"table_tps_{mem_tier.lower()}.png"
+            # Save without tight_layout to preserve exact dimensions
+            fig_table.savefig(table_filename, dpi=100, bbox_inches=None, facecolor='white')
+            plt.close()
+            print(f"    Saved: {table_filename}")
 
     print("\nGraph generation complete!")
     print(f"Output directory: {OUTPUT_DIR}")
