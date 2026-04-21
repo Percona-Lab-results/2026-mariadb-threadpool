@@ -799,46 +799,6 @@ sudo usermod -aG docker $USER
 <li>Generates separate result directories for each configuration</li>
 </ul>
 <br>
-<p><strong>Manual execution</strong> for specific configurations:</p>
-<pre><code>
-./run_metrics.sh &lt;dbms_name&gt; &lt;version&gt; &lt;is_read_only&gt; &lt;enable_thread_pool&gt;
-</code></pre>
-<p>Parameters:</p>
-<ul>
-<li><code>dbms_name</code>: Database server name (e.g., "mariadb")</li>
-<li><code>version</code>: Version string (e.g., "11.8.6")</li>
-<li><code>is_read_only</code>: 0 for read-write tests, 1 for read-only tests</li>
-<li><code>enable_thread_pool</code>: 0 to disable, 1 to enable thread pool (default: 0)</li>
-</ul>
-<br>
-<p>Examples:</p>
-<pre><code>
-# MariaDB 11.8.6 without thread pool
-./run_metrics.sh mariadb 11.8.6 0 0
-
-# MariaDB 11.8.6 with thread pool
-./run_metrics.sh mariadb 11.8.6 0 1
-</code></pre>
-<p><strong>Output Structure:</strong></p>
-<br>
-<p>Results are organized in the <code>benchmark_logs/</code> directory:</p>
-<ul>
-<li><code>mariadb/<version>/</code> - Results for default configuration</li>
-<li><code>mariadb-thp/<version>/</code> - Results for thread pool configuration</li>
-</ul>
-<br>
-<p>Each test generates multiple files:</p>
-<ul>
-<li><code>.sysbench.txt</code> - Sysbench throughput results</li>
-<li><code>.iostat.txt</code> - Disk I/O statistics</li>
-<li><code>.vmstat.txt</code> - Virtual memory statistics</li>
-<li><code>.mpstat.txt</code> - CPU statistics</li>
-<li><code>.dstat.txt</code> - Combined system statistics</li>
-<li><code>.cnf.txt</code> - Server configuration used for the test</li>
-<li><code>.vars.txt</code> - MySQL/MariaDB server variables</li>
-<li><code>.status.txt</code> - MySQL/MariaDB server status</li>
-</ul>
-<br>
 <p><strong>Hardware Considerations:</strong></p>
 <br>
 <p>While the benchmark can run on various hardware configurations, results will vary significantly based on:</p>
