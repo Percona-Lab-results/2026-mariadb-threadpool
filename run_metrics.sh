@@ -10,7 +10,7 @@ POOL_SIZES=(32 12 2)      # The 3 Tiers (GB)
 #POOL_SIZES=(2)
 
 THREADS=(1 4 16 32 64 128 256 512)
-#THREADS=(32 64 128)
+#THREADS=(32 64)
 
 # --- DEBUG SETTINGS ---
 TABLE_ROWS=5000000
@@ -21,7 +21,7 @@ DURATION=900
 # TABLE_ROWS=50000
 # WARMUP_RO_TIME=10
 # WARMUP_RW_TIME=10
-# DURATION=30
+# DURATION=10
 
 DBMS_NAME="$1"
 DBMS_VER="$2"
@@ -127,7 +127,7 @@ echo "Run container to detect the version of the server"
 if [[ "$IS_READ_ONLY" == "1" ]]; then
     BENCH_DIR="./benchmark_logs_read_only"
 else
-    BENCH_DIR="./benchmark_logs_custom"
+    BENCH_DIR="./benchmark_logs"
 fi  
 
 echo "Removing old config if exists: $CONFIG_PATH"
@@ -141,7 +141,12 @@ RAW_VERSION=$(mysql -h $DB_HOST -u $DB_USER -p$DB_PASS -N -e "SELECT VERSION();"
 MAJOR_VER=$(echo $RAW_VERSION | cut -d'.' -f1,2)
 IS_MARIA=$(echo $RAW_VERSION | grep -i "Maria" | wc -l)
 
-LOG_DIR="${BENCH_DIR}/${DBMS_NAME}/${RAW_VERSION}"
+# Append -thp to directory name if thread pool is enabled
+if [ "$ENABLE_THREAD_POOL" -eq 1 ]; then
+    LOG_DIR="${BENCH_DIR}/${DBMS_NAME}-thp/${RAW_VERSION}"
+else
+    LOG_DIR="${BENCH_DIR}/${DBMS_NAME}/${RAW_VERSION}"
+fi
 mkdir -p $LOG_DIR
 
 echo "Detected: $RAW_VERSION (Major: $MAJOR_VER, MariaDB: $IS_MARIA)"
@@ -407,38 +412,18 @@ start_metrics() {
     echo "mpstat -P ALL 1 > ${PREFIX}.mpstat.txt & echo \$! > /tmp/mpstat.pid"
     echo "dstat -t 1 > ${PREFIX}.dstat.txt & echo \$! > /tmp/dstat.pid"
 
-    # Start collection in background
-    HLL_OUTPUT="${PREFIX}.idbhist.txt"
-    bash "./collect_history_len.sh" "$HLL_OUTPUT" "$DB_USER" "$DB_PASS" "$DB_HOST" &
-    COLLECTOR_PID=$!
-
-    echo "Started HLL collector (PID=$COLLECTOR_PID), writing to $HLL_OUTPUT"
-    echo "$COLLECTOR_PID" > /tmp/hll_collector.pid
-
     iostat -dxm 1 > ${PREFIX}.iostat.txt & echo $! > /tmp/iostat.pid
     vmstat 1 > ${PREFIX}.vmstat.txt & echo $! > /tmp/vmstat.pid
     mpstat -P ALL 1 > ${PREFIX}.mpstat.txt & echo $! > /tmp/mpstat.pid
     dstat -t 1 > ${PREFIX}.dstat.txt & echo $! > /tmp/dstat.pid
 }
 
-stop_collector() {
-    local COLLECTOR_PID=$(cat /tmp/hll_collector.pid 2>/dev/null)
-
-    if kill -0 "$COLLECTOR_PID" 2>/dev/null; then
-        echo "Stopping HLL collector (PID=$COLLECTOR_PID)"
-        kill "$COLLECTOR_PID"
-        wait "$COLLECTOR_PID" 2>/dev/null
-    fi
-    echo "HLL data written to $HLL_OUTPUT"
-}
-
-
 stop_metrics() {
     kill $(cat /tmp/iostat.pid) $(cat /tmp/vmstat.pid) $(cat /tmp/mpstat.pid) $(cat /tmp/dstat.pid) 2>/dev/null
 }
 
-trap 'stop_metrics; stop_collector' EXIT
-trap 'stop_metrics; stop_collector; exit 1' INT TERM
+trap 'stop_metrics' EXIT
+trap 'stop_metrics; exit 1' INT TERM
 
 init_data() {
   # echo ">>> Resetting databases..."
@@ -509,7 +494,6 @@ for SIZE in "${POOL_SIZES[@]}"; do
         run > "${FILE_PREFIX}.sysbench.txt"
 
     stop_metrics
-    stop_collector
     sleep 10
   done
   copy_server_logs $SIZE
