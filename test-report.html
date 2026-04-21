@@ -746,6 +746,109 @@ max_binlog_size                 = 512M
 </ul>
 <br>
 <p>These limitations do not diminish the value of the findings but provide important context for applying these results to production scenarios. The relative performance differences observed between configurations remain instructive even as absolute numbers may vary in different deployment contexts.</p>
+<h2>10. Reproducibility</h2>
+<p>This benchmark is designed to be reproducible on compatible systems. The testing framework and automation scripts are available in the project repository.</p>
+<br>
+<p><strong>System Requirements:</strong></p>
+<br>
+<p><strong>Operating System:</strong></p>
+<ul>
+<li>Ubuntu 24.04 LTS (current supported platform)</li>
+<li>Other Linux distributions may work but are not officially tested</li>
+</ul>
+<br>
+<p><strong>Software Prerequisites:</strong></p>
+<br>
+<p>Install required packages:</p>
+<pre><code>
+sudo apt install docker.io sysstat sysbench mysql-client dstat -y
+</code></pre>
+<p><strong>Docker Group Permissions:</strong></p>
+<br>
+<p>Add your user to the docker group to run containers without sudo:</p>
+<pre><code>
+sudo usermod -aG docker $USER
+</code></pre>
+<p>After running this command, log out and back in, or run <code>newgrp docker</code> to activate the new group membership without restarting your session.</p>
+<br>
+<p><strong>Root Access Requirement:</strong></p>
+<br>
+<p>The benchmark scripts require sudo privileges for:</p>
+<ul>
+<li>CPU frequency governor configuration (<code>cpupower</code>)</li>
+<li>System telemetry collection (iostat, vmstat, mpstat, dstat)</li>
+<li>Configuration file management</li>
+</ul>
+<br>
+<p>Your user account must have sudo access to run the benchmark suite.</p>
+<br>
+<p><strong>Running the Benchmarks:</strong></p>
+<br>
+<p>The repository includes automated scripts for running the complete benchmark suite:</p>
+<br>
+<p><strong>Full benchmark suite</strong> (both thread pool configurations):</p>
+<pre><code>
+./run_all.sh
+</code></pre>
+<p>This script automatically:</p>
+<ul>
+<li>Installs additional dependencies</li>
+<li>Runs system profiling tools</li>
+<li>Executes benchmarks for MariaDB 11.8.6 and 12.2.2</li>
+<li>Tests both default (one-thread-per-connection) and thread pool configurations</li>
+<li>Generates separate result directories for each configuration</li>
+</ul>
+<br>
+<p><strong>Manual execution</strong> for specific configurations:</p>
+<pre><code>
+./run_metrics.sh &lt;dbms_name&gt; &lt;version&gt; &lt;is_read_only&gt; &lt;enable_thread_pool&gt;
+</code></pre>
+<p>Parameters:</p>
+<ul>
+<li><code>dbms_name</code>: Database server name (e.g., "mariadb")</li>
+<li><code>version</code>: Version string (e.g., "11.8.6")</li>
+<li><code>is_read_only</code>: 0 for read-write tests, 1 for read-only tests</li>
+<li><code>enable_thread_pool</code>: 0 to disable, 1 to enable thread pool (default: 0)</li>
+</ul>
+<br>
+<p>Examples:</p>
+<pre><code>
+# MariaDB 11.8.6 without thread pool
+./run_metrics.sh mariadb 11.8.6 0 0
+
+# MariaDB 11.8.6 with thread pool
+./run_metrics.sh mariadb 11.8.6 0 1
+</code></pre>
+<p><strong>Output Structure:</strong></p>
+<br>
+<p>Results are organized in the <code>benchmark_logs/</code> directory:</p>
+<ul>
+<li><code>mariadb/<version>/</code> - Results for default configuration</li>
+<li><code>mariadb-thp/<version>/</code> - Results for thread pool configuration</li>
+</ul>
+<br>
+<p>Each test generates multiple files:</p>
+<ul>
+<li><code>.sysbench.txt</code> - Sysbench throughput results</li>
+<li><code>.iostat.txt</code> - Disk I/O statistics</li>
+<li><code>.vmstat.txt</code> - Virtual memory statistics</li>
+<li><code>.mpstat.txt</code> - CPU statistics</li>
+<li><code>.dstat.txt</code> - Combined system statistics</li>
+<li><code>.cnf.txt</code> - Server configuration used for the test</li>
+<li><code>.vars.txt</code> - MySQL/MariaDB server variables</li>
+<li><code>.status.txt</code> - MySQL/MariaDB server status</li>
+</ul>
+<br>
+<p><strong>Hardware Considerations:</strong></p>
+<br>
+<p>While the benchmark can run on various hardware configurations, results will vary significantly based on:</p>
+<ul>
+<li>CPU core count (affects thread pool sizing and concurrency behavior)</li>
+<li>Available RAM (determines realistic buffer pool tiers)</li>
+<li>Storage performance (critical for I/O-bound workloads)</li>
+</ul>
+<br>
+<p>The thread pool size in the default configuration is set to 80 threads to match the 80-thread (40 physical core) test system. Adjust <code>thread_pool_size</code> in <code>run_metrics.sh</code> to match your system's physical core count for optimal results.</p>
 <br>
 </body>
 </html>
