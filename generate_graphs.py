@@ -270,6 +270,18 @@ def create_heatmap_table(mem_tier, data):
         '#F0FFE8',  # Light yellow-green
     ]
 
+    # Header colors (more saturated versions of column backgrounds)
+    col_header_colors = [
+        '#B3D9E8',  # Saturated blue
+        '#B3E8B3',  # Saturated green
+        '#FFE0A0',  # Saturated orange
+        '#E8B3E8',  # Saturated purple
+        '#A0E8E8',  # Saturated cyan
+        '#FFB3B3',  # Saturated red
+        '#B3B3FF',  # Saturated blue-purple
+        '#D0FFB3',  # Saturated yellow-green
+    ]
+
     # Create figure - 1600px width at 100 DPI = 16 inches
     fig = plt.figure(figsize=(16, len(server_labels) * 0.7 + 2.5), dpi=100)
     # Remove all margins/padding
@@ -305,18 +317,19 @@ def create_heatmap_table(mem_tier, data):
         x = start_x + col_idx * col_width
         y = start_y
 
+        header_color = col_header_colors[col_idx % len(col_header_colors)]
         rect = mpatches.Rectangle((x, y), col_width, row_height,
-                                 facecolor='#D0E0F0', edgecolor='black', linewidth=2)
+                                 facecolor=header_color, edgecolor='black', linewidth=2)
         ax.add_patch(rect)
         ax.text(x + col_width/2, y + row_height/2, f'{tc}t',
-               ha='center', va='center', fontweight='bold', fontsize=11)
+               ha='center', va='center', fontweight='bold', fontsize=16)
 
     # Draw "Engine" label
     rect = mpatches.Rectangle((0, start_y), row_label_width, row_height,
                              facecolor='#D0E0F0', edgecolor='black', linewidth=2)
     ax.add_patch(rect)
     ax.text(row_label_width/2, start_y + row_height/2, 'Engine',
-           ha='center', va='center', fontweight='bold', fontsize=11)
+           ha='center', va='center', fontweight='bold', fontsize=16)
 
     # Draw data rows
     for row_idx, server in enumerate(server_labels):
@@ -328,7 +341,7 @@ def create_heatmap_table(mem_tier, data):
                                  facecolor=label_bg, edgecolor='black', linewidth=2)
         ax.add_patch(rect)
         ax.text(0.01, y + row_height/2, server,
-               ha='left', va='center', fontweight='bold', fontsize=11)
+               ha='left', va='center', fontweight='bold', fontsize=16)
 
         # Draw data cells with bars
         for col_idx in range(n_cols):
