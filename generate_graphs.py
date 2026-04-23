@@ -159,9 +159,8 @@ def create_graph(mem_tier, data, metric='tps'):
         color = COLORS.get(server_name, 'gray')
         is_filled = MARKER_FILLED.get(server_name, True)
 
-        # Set transparency for reference servers (MySQL and Percona)
-        is_reference = 'MySQL' in server_name or 'Percona' in server_name
-        alpha = 0.25 if is_reference else 1.0
+        # All lines are now non-transparent
+        alpha = 1.0
 
         # For outlined markers: face color is white, edge color is the line color, smaller size
         # For filled markers: both face and edge are the line color, larger size
@@ -188,9 +187,9 @@ def create_graph(mem_tier, data, metric='tps'):
                 markeredgewidth=markeredgewidth,
                 alpha=alpha)
 
-    # Title styling - simpler, cleaner
+    # Title styling - larger, bold
     ax.set_title(f'Sysbench OLTP Read-Write Throughput   [innodb_buffer_pool_size = {mem_tier}B]',
-                 fontsize=16, pad=20, color='#333333')
+                 fontsize=20, fontweight='bold', pad=20, color='#333333')
 
     # Axis labels
     ax.set_xlabel('Client Threads', fontsize=13, color='#333333')
@@ -368,6 +367,10 @@ def create_heatmap_table(mem_tier, data):
                 # Bar size is directly proportional to value relative to max
                 norm_value = value / vmax if vmax > 0 else 1.0
 
+                # Calculate ranking within this column (1 = best/highest)
+                sorted_col = sorted(col_values, reverse=True)
+                rank = sorted_col.index(value) + 1
+
                 # Bar color based on ranking (min to max range)
                 if vmax > vmin:
                     color_norm = (value - vmin) / (vmax - vmin)
@@ -376,6 +379,7 @@ def create_heatmap_table(mem_tier, data):
             else:
                 norm_value = 1.0
                 color_norm = 1.0
+                rank = 1
 
             # Color gradient: red (worst/min) -> yellow (mid) -> green (best/max)
             if color_norm < 0.5:
@@ -383,21 +387,39 @@ def create_heatmap_table(mem_tier, data):
             else:
                 r, g, b = 1.0 - (color_norm - 0.5) * 2, 1.0, 0.0
 
-            # Draw bar proportional to value
+            # Draw bar proportional to value (moved down)
             bar_max_width = col_width * 0.85
             bar_x = x + 0.05 * col_width
-            bar_y = y + row_height * 0.3
+            bar_y = y + row_height * 0.22  # Moved down from 0.3 to 0.22
             bar_height = row_height * 0.15
 
             bar_width = norm_value * bar_max_width
+            bar_color = (r, g, b)
             bar_rect = mpatches.Rectangle((bar_x, bar_y), bar_width, bar_height,
                                          facecolor=(r, g, b, 0.8),
                                          edgecolor='none')
             ax.add_patch(bar_rect)
 
-            # Draw text value
-            ax.text(x + col_width/2, y + row_height * 0.65, f'{int(value):,}',
-                   ha='center', va='center', fontsize=15, fontweight='normal')
+            # Draw small rectangle in top-right corner with bar color (moved slightly inward)
+            rank_box_width = col_width * 0.15
+            rank_box_height = row_height * 0.35
+            rank_box_x = x + col_width - rank_box_width - col_width * 0.03  # Move left by 3% of column width
+            rank_box_y = y + row_height - rank_box_height - row_height * 0.05  # Move down by 5% of row height
+
+            rank_box = mpatches.Rectangle((rank_box_x, rank_box_y), rank_box_width, rank_box_height,
+                                         facecolor=bar_color, edgecolor='none', alpha=0.8)
+            ax.add_patch(rank_box)
+
+            # Draw TPS value in center (moved up, black)
+            ax.text(x + col_width/2, y + row_height * 0.58, f'{int(value):,}',
+                   ha='center', va='center', fontsize=15, fontweight='normal', color='black')
+
+            # Create much darker version of bar color for ranking text (70% darker)
+            darker_color = (r * 0.3, g * 0.3, b * 0.3)
+
+            # Draw ranking number in the small rectangle (much darker shade of bar color)
+            ax.text(rank_box_x + rank_box_width/2, rank_box_y + rank_box_height/2, str(rank),
+                   ha='center', va='center', fontsize=12, fontweight='bold', color=darker_color)
 
     return fig
 

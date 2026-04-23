@@ -1,4 +1,4 @@
-# MariaDB OLTP Performance: Storage Upgrade and Configuration Optimization Study
+# MariaDB, MySQL and Percona Server OLTP Performance - NVMe Storage and Configuration Optimization
 
 ## 1. Interactive Graphs
 
@@ -19,46 +19,31 @@ This interactive tool allows you to:
 
 ### Purpose
 
-The [previous benchmark study](https://www.percona.com/blog/2026-mysql-ecosystem-performance-benchmark-report/) ran MariaDB 11.4.10 and 12.1.2 on **SATA SSD storage** with conservative I/O settings (`innodb_io_capacity=2500`).
+This benchmark study compares MariaDB performance against MySQL and Percona Server on fast storage with optimized configuration. All servers are tested with:
 
-This benchmark study evaluates the performance impact of the following changes:
+- **NVMe storage** for high-performance testing
+- **Optimized I/O configuration** to match NVMe capabilities (`innodb_io_capacity=10000`, 16 I/O threads)
+- **Thread pool testing** as a secondary experiment for MariaDB
 
-- **NVMe storage** instead of SATA SSD (**PRIMARY improvement factor**)
-- **Aggressive I/O tuning** to match NVMe capabilities (`innodb_io_capacity=10000`, 16 I/O threads)
-- **Updated MariaDB versions** (11.8.6 and 12.2.2)
-- **Thread pool testing** as a secondary experiment
-
-The goal is to quantify the performance gain from SATA SSD → NVMe migration with proper configuration tuning, and whether thread pool provides additional value in this environment.
+The goal is to evaluate how MariaDB 11.8.6 and 12.2.2 perform compared to MySQL 8.4.8, MySQL 9.7.0-er2, and Percona Server 8.4.8 on fast storage with optimized settings.
 
 ### Target Questions
 
 This analysis seeks to answer the following key questions:
 
-1. **Storage Hardware Impact**
-   - How much did migrating from SATA SSD to NVMe improve throughput?
-   - What is the delta in I/O-bound (2GB buffer) vs memory-resident (32GB buffer) workloads?
-   - How much of the improvement comes from hardware vs configuration tuning?
+1. **Primary Comparison: MariaDB vs MySQL and Percona Server**
+   - How does MariaDB 11.8.6 and 12.2.2 with optimized I/O configuration on NVMe storage compare to MySQL 8.4.8, MySQL 9.7.0-er2, and Percona Server 8.4.8?
+   - How do MariaDB versions perform across different memory tiers (I/O bound, mixed, memory-resident workloads)?
 
-2. **Version Upgrade Impact**
-   - How do MariaDB 11.8.6 and 12.2.2 compare to their predecessors (11.4.10, 12.1.2)?
-   - Which version upgrades provided the most significant improvements?
-   - Are there concurrency levels where version differences are most visible?
-
-3. **Before/After Performance Delta**
-   - At which concurrency and memory tier combinations did we see the largest improvements?
-   - Did the NVMe migration shift the performance curve or just raise the ceiling?
-   - What workload characteristics benefited most from faster storage?
-
-4. **Thread Pool as Secondary Experiment**
+2. **Thread Pool as Secondary Experiment**
    - Does thread pool provide additional value on top of NVMe storage?
    - Are the thread pool benefits observed with fast storage consistent with expectations?
    - When would thread pool be recommended given NVMe baseline performance?
 
 ### Scope
 
-- **Primary Comparison**: Previous run (SATA SSD, MariaDB 11.4.10/12.1.2, innodb_io_capacity=2500) vs Current run (NVMe, MariaDB 11.8.6/12.2.2, innodb_io_capacity=10000)
-- **Secondary Test**: Thread Pool configuration (with and without) on NVMe storage
-- **Reference Systems**: MySQL 8.4.8, MySQL 9.7.0-er2, Percona Server 8.4.8 (for comparative context)
+- **Primary Comparison**: MariaDB 11.8.6 and 12.2.2 vs MySQL 8.4.8, MySQL 9.7.0-er2, and Percona Server 8.4.8 on NVMe storage with optimized I/O configuration
+- **Secondary Test**: Thread Pool configuration (with and without) for MariaDB
 - **Workload Type**: Sysbench OLTP Read-Write
 - **Concurrency Levels**: 1, 4, 16, 32, 64, 128, 256, 512 client threads
 - **Memory Tiers**: 2 GB, 12 GB, 32 GB `innodb_buffer_pool_size`
@@ -66,181 +51,158 @@ This analysis seeks to answer the following key questions:
 
 ### 2.2. Configurations Under Test
 
-**Previous Run (baseline for comparison):**
-- **Storage:** SATA SSD
-- MariaDB 11.4.10 with `innodb_io_capacity=2500`
-- MariaDB 12.1.2 with `innodb_io_capacity=2500`
-
-**Current Run (NVMe migration):**
-
-| Server | Version | Storage | I/O Config | Thread Handling | Role |
-|--------|---------|---------|-----------|----------------|------|
-| **MariaDB** | 11.8.6 | NVMe | innodb_io_capacity=10000, 16 threads | Default | Primary: NVMe + version delta |
-| **MariaDB** | 11.8.6 | NVMe | innodb_io_capacity=10000, 16 threads | Thread Pool | Secondary: thread pool test |
-| **MariaDB** | 12.2.2 | NVMe | innodb_io_capacity=10000, 16 threads | Default | Primary: NVMe + version delta |
-| **MariaDB** | 12.2.2 | NVMe | innodb_io_capacity=10000, 16 threads | Thread Pool | Secondary: thread pool test |
-| **MySQL** | 8.4.8 | NVMe | innodb_io_capacity=10000, 16 threads | Default | Reference |
-| **MySQL** | 9.7.0-er2 | NVMe | innodb_io_capacity=10000, 16 threads | Default | Reference |
-| **Percona Server** | 8.4.8-8 | NVMe | innodb_io_capacity=10000, 16 threads | Default | Reference |
-
-**Key Changes from Previous Run:**
-- **Storage:** SATA SSD → **NVMe** (PRIMARY factor)
-- `innodb_io_capacity`: 2500 → 10000 (tuned for NVMe)
-- `innodb_io_capacity_max`: 5000 → 20000 (tuned for NVMe)
-- `innodb_read_io_threads`: 4 → 16 (tuned for NVMe)
-- `innodb_write_io_threads`: 4 → 16 (tuned for NVMe)
-- MariaDB versions: 11.4.10 → 11.8.6, 12.1.2 → 12.2.2
+| Server | Version | Thread Handling | Role |
+|--------|---------|----------------|------|
+| **MariaDB** | 11.8.6 | Default | Primary comparison |
+| **MariaDB** | 11.8.6 | Thread Pool | Secondary: thread pool test |
+| **MariaDB** | 12.2.2 | Default | Primary comparison |
+| **MariaDB** | 12.2.2 | Thread Pool | Secondary: thread pool test |
+| **MySQL** | 8.4.8 | Default | Primary comparison |
+| **MySQL** | 9.7.0-er2 | Default | Primary comparison |
+| **Percona Server** | 8.4.8-8 | Default | Primary comparison |
 
 ## 3. Key Findings
 
-This section summarizes the critical performance insights derived from comparing the tuned configuration against the previous baseline, plus observations from the thread pool experiment.
+This section summarizes the critical performance insights from comparing all database servers, highlighting which versions excel or struggle in different scenarios.
 
-### 3.1. NVMe Storage Migration Impact (Primary Finding)
+### 3.1. Performance by Workload Type
 
-Migrating from SATA SSD to NVMe storage (with appropriate I/O configuration tuning) provided dramatic improvements:
+Performance varies significantly across database engines and versions depending on workload characteristics:
 
-**MariaDB 11 Series (11.4.10 SATA → 11.8.6 NVMe):**
+#### 3.1.1. Memory-Resident Workloads (32GB Buffer Pool)
 
-| Buffer Pool | Concurrency | Old (SATA SSD) | New (NVMe) | Improvement | Key Insight |
-|-------------|-------------|----------------|------------|-------------|-------------|
-| **2 GB (I/O bound)** | 64 threads | 614 TPS | 4,199 TPS | **+584% (6.8x)** | NVMe eliminates SATA bottleneck |
-| **12 GB (Mixed)** | 128 threads | 1,212 TPS | 3,635 TPS | **+200% (3x)** | Partial I/O pressure still shows major gains |
-| **32 GB (Memory)** | 128 threads | 10,232 TPS | 10,694 TPS | **+5%** | Minimal storage impact when fully cached |
+**Winner: MariaDB dominates when the full dataset fits in memory**
 
-**MariaDB 12 Series (12.1.2 SATA → 12.2.2 NVMe):**
+![Memory-Resident Table](graphs_out/table_tps_32g.png)
 
-| Buffer Pool | Concurrency | Old (SATA SSD) | New (NVMe) | Improvement | Key Insight |
-|-------------|-------------|----------------|------------|-------------|-------------|
-| **2 GB (I/O bound)** | 64 threads | 614 TPS | 4,186 TPS | **+582% (6.8x)** | NVMe eliminates SATA bottleneck |
-| **12 GB (Mixed)** | 128 threads | 1,216 TPS | 6,081 TPS | **+400% (5x)** | MariaDB 12.2.2 uses NVMe better at high concurrency |
-| **32 GB (Memory)** | 128 threads | 10,273 TPS | 17,710 TPS | **+72%** | Version upgrade contributes significant gains even when memory-resident |
+![Memory-Resident Performance](graphs_out/throughput_tps_32g.png)
 
-**Important Note:** MariaDB 12.2.2 shows substantially stronger improvements than 11.8.6, particularly in memory-resident workloads. The 72% gain at 32GB (vs 11.8.6's 5%) suggests that the 12.1.2 → 12.2.2 upgrade included architectural improvements beyond just I/O handling, possibly in lock contention or transaction processing efficiency.
+**Top performers at 128 threads:**
+1. **MariaDB 11.8.6: 10,694 TPS** - Best overall
+2. MySQL 9.7.0: 9,374 TPS (-12% vs leader)
+3. Percona Server 8.4.8: 8,483 TPS (-21% vs leader)
+4. MySQL 8.4.8: 8,345 TPS (-22% vs leader)
 
-**Key Observation:** 
+**Key observations:**
+- **MariaDB 11.8.6** leads by 14-28% across all MySQL and Percona variants when data is memory-resident
+- **MySQL 9.7.0** shows significant improvement over 8.4.8 (+12%), closing the gap with MariaDB
+- **Percona Server 8.4.8** and MySQL 8.4.8 trail behind, suggesting room for optimization in memory-bound OLTP scenarios
+- All servers maintain efficient scaling up to 128 threads before experiencing lock contention degradation at 256+ threads
 
-The previous benchmark on **SATA SSD storage** was severely bottlenecked by storage I/O. At 64 threads with 2GB buffer (heavy I/O workload), SATA could only deliver ~614 TPS. **NVMe storage delivers 6.8x higher throughput** at the same concurrency level.
+#### 3.1.2. I/O-Bound Workloads (2GB Buffer Pool)
 
-The improvement is most dramatic in I/O-bound scenarios (2GB buffer) and diminishes as workloads become more memory-resident (32GB buffer, only 5% gain). This confirms that the previous configuration was storage-constrained, not CPU or lock-constrained.
+**Winner: MariaDB leads significantly, but all servers experience scaling issues at high concurrency**
 
-### 3.2. Version Upgrade Impact
+![I/O-Bound Table](graphs_out/table_tps_2g.png)
 
-**MariaDB 11.4.10 → 11.8.6:**
+![I/O-Bound Performance](graphs_out/throughput_tps_2g.png)
 
-The version upgrade itself provides minimal delta — the massive improvements shown in section 3.1 are primarily driven by the SATA → NVMe storage migration. At memory-resident workloads where storage speed has minimal impact:
-- 32GB buffer, 128 threads: 10,232 TPS → 10,694 TPS (+5%)
+**Top performers at 64 threads (optimal concurrency):**
+1. **MariaDB 11.8.6: 4,199 TPS** - Best overall, more than doubles competition
+2. Percona Server 8.4.8: 2,543 TPS (-39% vs leader)
+3. MySQL 9.7.0: 2,036 TPS (-52% vs leader)
+4. MySQL 8.4.8: 1,978 TPS (-53% vs leader)
 
-This suggests the 11.4.10 → 11.8.6 upgrade provides incremental improvements but is not the primary performance driver.
+**Key observations:**
+- **MariaDB's substantial lead** (65-112% faster) is achieved through more aggressive I/O strategies:
+  - **2.3x more read IOPS** than MySQL (105K vs 46K reads/sec) with the same 16KB page size
+  - **87% NVMe utilization** vs 75-78% for competitors, indicating better I/O parallelism
+  - Higher I/O wait time (48% vs 14-19%) but achieves 2x throughput by keeping NVMe busier
+  - This demonstrates MariaDB's superior ability to issue parallel I/O operations under memory pressure
+- **Percona Server 8.4.8** performs better than both MySQL variants in I/O-bound scenarios (+23-29%)
+- **MySQL 9.7.0** shows minimal improvement over 8.4.8 (+3%) in I/O-constrained workloads, suggesting I/O optimization wasn't a focus area for this release
 
-**MariaDB 12.1.2 → 12.2.2:**
+**Important issue: Performance cliff at 128 threads affects all servers:**
+- MariaDB: 4,199 → 1,099 TPS (-74% drop)
+- All servers experience significant degradation due to lock contention around undersized buffer pools
+- CPU utilization collapses from 73% to 22% as threads idle waiting for buffer pool locks
+- **Root cause:** Buffer pool lock contention, not storage speed. Solution is to increase buffer pool size, not enable thread pool.
 
-Version 12.2.2 demonstrates architectural improvements in concurrent I/O handling that better utilize NVMe capabilities:
-- At 128 threads/12GB (mixed I/O): maintains 43% CPU utilization vs 11.8.6's 11%
-- Prevents I/O serialization that affects 11.8.6 at this concurrency level
-- 67% higher throughput than 11.8.6 at 128 threads/12GB (6,080 vs 3,635 TPS)
-- Sustains 1.77 GB/s disk read bandwidth vs 11.8.6's 541 MB/s
+#### 3.1.3. Mixed I/O Workloads (12GB Buffer Pool) - Version-Dependent Behavior
 
-The 12.x series has better I/O queue management and can fully utilize NVMe's high concurrency capabilities more effectively than 11.x.
+**Winners vary by concurrency level: MariaDB leads at 64 threads, MySQL 9.7.0 leads at 128 threads**
 
-**Combined Effect:** 
+![Mixed I/O Table](graphs_out/table_tps_12g.png)
 
-For I/O-bound workloads, the aggregate improvement is dominated by the NVMe migration (contributing ~580% of the gain). However, **MariaDB 12.2.2 provides substantial additional benefits**:
-- **I/O-bound (2GB):** ~6.8x from NVMe (version contribution minimal)
-- **Mixed I/O (12GB):** ~5x total (NVMe + improved I/O queue management in 12.2.2)
-- **Memory-resident (32GB):** ~72% gain despite no I/O bottleneck (architectural improvements in 12.2.2)
+![Mixed I/O Performance](graphs_out/throughput_tps_12g.png)
 
-The 12.1.2 → 12.2.2 upgrade appears to include significant improvements beyond just I/O handling, potentially in lock management, transaction processing, or CPU efficiency, as evidenced by the 72% gain in fully memory-resident workloads where storage speed is irrelevant.
+**Top performers at 64 threads (optimal concurrency):**
+1. **MariaDB 12.2.2: 7,364 TPS** - Best overall
+2. MariaDB 11.8.6: 7,302 TPS (-1% vs leader)
+3. MySQL 9.7.0: 6,924 TPS (-6% vs leader)
+4. MySQL 8.4.8: 6,797 TPS (-8% vs leader)
+5. Percona Server 8.4.8: 5,954 TPS (-19% vs leader)
 
-### 3.3. Thread Pool Findings (Secondary Experiment)
+**Top performers at 128 threads (high concurrency):**
+1. **MySQL 9.7.0: 6,729 TPS** - Best at high concurrency
+2. Percona Server 8.4.8: 6,619 TPS (-2% vs leader)
+3. MySQL 8.4.8: 6,201 TPS (-8% vs leader)
+4. **MariaDB 12.2.2: 6,080 TPS** (-10% vs leader)
+5. **MariaDB 11.8.6: 3,635 TPS** (-46% vs leader) - **Significantly underperforms at this concurrency**
 
-Thread pool was tested on NVMe storage but did not provide additional value beyond the storage upgrade:
+**Key observations:**
+- **MariaDB 11.8.6 has suboptimal concurrency scaling** at 128+ threads with mixed I/O workloads (drops 50% below competition)
+- **MariaDB 12.2.2 resolves this performance limitation** with 67% improvement over 11.8.6, achieving competitive performance through improved concurrent I/O handling
+- **MySQL 9.7.0 excels at high concurrency** in mixed workloads, taking the lead at 128+ threads
+- **Percona Server 8.4.8** maintains consistent performance but trails MariaDB at 64 threads (-19%)
 
-**When Thread Pool Helped (High Concurrency):**
-- At 512 threads with 2GB buffer: +121-143% throughput (587-600 TPS vs 247-266 TPS baseline)
-- At 512 threads with 12GB buffer: +79-83% throughput (1,285-1,302 TPS vs 704-727 TPS baseline)
+#### 3.1.4. Summary across workloads
+
+**Workload-specific observations:**
+
+1. **Memory-resident workloads (32GB+):** 
+   - **Winner: MariaDB 11.8.6** (+14-28% vs all competitors)
+   - MySQL 9.7.0 is the best non-MariaDB option (+12% vs MySQL 8.4.8)
+
+2. **I/O-bound workloads (small buffer pools):**
+   - **Winner: MariaDB 11.8.6** (+65-112% vs all competitors)
+   - Percona Server 8.4.8 is the best non-MariaDB option (+23-29% vs MySQL)
+   - **Note:** All servers experience significant scaling issues at 128+ threads with undersized buffers
+
+3. **Mixed I/O workloads (moderate buffer pools):**
+   - **At 64 threads: MariaDB 12.2.2** (+6-19% vs all competitors)
+   - **At 128+ threads: MySQL 9.7.0** leads in high-concurrency scenarios
+   - **Important:** MariaDB 11.8.6 shows significantly reduced performance here - 12.2.2 has better results.
+
+**Version-specific observations:**
+- **MariaDB 11.8.6:** Shows suboptimal concurrency scaling at 128+ threads with mixed workloads. **MariaDB 12.2.2 is better** with 67% performance improvement in this scenario.
+- **MySQL 8.4.8:** Consistently trails MySQL 9.7.0 by 3-12% across all workloads
+- **Percona Server 8.4.8:** Strong in I/O-bound scenarios but weaker in memory-resident workloads (-21% vs MariaDB)
+
+### 3.2. Thread Pool Findings (Secondary Experiment)
+
+Thread pool was tested on NVMe storage but did not provide significant additional value:
+
+**When Thread Pool Helped (Very High Oversubscription):**
+- **At 512 threads with 2GB buffer:** +121% throughput (587 TPS vs 266 TPS baseline for MariaDB 11.8.6)
+- **At 512 threads with 12GB buffer:** +79-83% throughput (1,285-1,302 TPS vs 704-727 TPS baseline)
+
+Thread pool helps at very high oversubscription (512 threads) by limiting active threads to 80, reducing lock contention. However, these scenarios are unusual — normal production workloads should not operate at this level of oversubscription.
 
 **When Thread Pool Did Not Help:**
-- Low concurrency (1-32 threads): 3-10% overhead from coordination costs
-- Memory-resident workloads (32GB buffer): minimal benefit, baseline already handles 128 threads efficiently
-- Peak performance point (128 threads, 32GB): baseline achieves ~10,600 TPS, thread pool provides no additional gain
+- **Low concurrency (1-32 threads):** -3% to -20% overhead from coordination costs
+- **Optimal concurrency (64-128 threads):** -3% to -10% performance penalty in most cases
+- **Memory-resident workloads (32GB buffer):** Thread pool provides no benefit across all concurrency levels. Baseline achieves peak performance (~10,700 TPS) at 128 threads without thread pool
 
-**Why Thread Pool Wasn't Needed Here:**
+**Specific Performance Impact:**
 
-NVMe storage already eliminated the bottlenecks that thread pool typically addresses:
-- NVMe's low latency and high concurrent I/O capability handle high concurrency without thread thrashing
-- The previous run on SATA SSD likely would have benefited more from thread pool
-- Thread pool value proposition is strongest when storage is slow or undersized for the workload
+| Memory Tier | Concurrency | Baseline | Thread Pool | Delta |
+|-------------|-------------|----------|-------------|-------|
+| 2GB | 64 threads | 4,199 TPS | ~4,200 TPS | 0% |
+| 2GB | 128 threads | 1,099 TPS | 657 TPS | -40% |
+| 12GB | 64 threads | 7,302 TPS | 7,119 TPS | -3% |
+| 12GB | 128 threads (11.8.6) | 3,635 TPS | 4,234 TPS | +16% |
+| 12GB | 128 threads (12.2.2) | 6,080 TPS | 5,455 TPS | -10% |
+| 32GB | 128 threads | 10,694 TPS | 10,232 TPS | -4% |
 
-### 3.4. Practical Recommendations
+**Possible improvements:**
+1. **For I/O-bound workloads:** Increase buffer pool size rather than enabling thread pool — the 2GB configuration's performance cliff is due to buffer pool lock contention, which thread pool cannot solve effectively
+2. **For mixed I/O workloads:** Upgrade to MariaDB 12.2.2 first (67% better than 11.8.6 at 128 threads). Only enable thread pool if regularly operating at 256+ concurrent connections
+3. **For memory-resident workloads:** Skip thread pool entirely. Focus on lock optimization and query tuning instead
 
-**Priority 1: Migrate to NVMe Storage**
-- **6-7x performance improvement** for I/O-bound workloads
-- Essential for high-concurrency OLTP applications with datasets exceeding buffer pool
-- Configure InnoDB appropriately: `innodb_io_capacity=10000`, 16 I/O threads for NVMe
+## 4. Test Environment & Infrastructure
 
-**Priority 2: Upgrade to Latest MariaDB Versions**
-- MariaDB 12.2.2 shows superior concurrent I/O handling that better utilizes NVMe
-- Version upgrades are particularly valuable for mixed I/O workloads (partial buffer pool coverage)
-- 67% higher throughput than 11.8.6 at high concurrency on NVMe
-
-**Priority 3: Consider Thread Pool Only If...**
-- You regularly see connection counts exceeding 256+ concurrent threads
-- You have I/O-bound workloads where dataset significantly exceeds buffer pool
-- Your environment has unpredictable connection spikes requiring stability
-
-**Not Recommended:**
-- Enabling thread pool without first migrating to NVMe (fix the root cause first)
-- Thread pool for workloads operating at <128 concurrent connections
-- Thread pool for fully memory-resident datasets with predictable concurrency
-- Staying on SATA SSD for I/O-intensive database workloads
-
-## 4. Before/After Comparison Summary
-
-This section directly compares the previous run (SATA SSD) against the current run (NVMe + version updates) to highlight the improvement.
-
-### 4.1. Configuration Comparison
-
-| Parameter | Previous Run | Current Run | Change |
-|-----------|-------------|-------------|---------|
-| **Storage Hardware** | **SATA SSD** | **NVMe** | **PRIMARY CHANGE** |
-| MariaDB 11.x | 11.4.10 | 11.8.6 | +2 minor versions |
-| MariaDB 12.x | 12.1.2 | 12.2.2 | +1 minor version |
-| innodb_io_capacity | 2500 | 10000 | **4x** (tuned for NVMe) |
-| innodb_io_capacity_max | 5000 | 20000 | **4x** (tuned for NVMe) |
-| innodb_read_io_threads | 4 | 16 | **4x** (tuned for NVMe) |
-| innodb_write_io_threads | 4 | 16 | **4x** (tuned for NVMe) |
-
-### 4.2. Performance Delta (MariaDB 11.x Series)
-
-Selected representative concurrency and memory tier combinations showing the impact:
-
-| Test Scenario | Old (SATA SSD) | New (NVMe) | Improvement | Analysis |
-|---------------|----------------|------------|-------------|----------|
-| **2GB, 64 threads** | 614 TPS | 4,199 TPS | **+584% (6.8x)** | SATA bottleneck eliminated by NVMe |
-| **12GB, 128 threads** | 1,212 TPS | 3,635 TPS | **+200% (3x)** | Mixed workload benefits substantially |
-| **32GB, 128 threads** | 10,232 TPS | 10,694 TPS | **+5%** | Memory-resident: minimal storage impact |
-
-**Key Takeaway:** The improvement is inversely proportional to buffer pool size. Heavy I/O workloads (2GB buffer) see 6-7x gains from NVMe, while memory-resident workloads (32GB buffer) see minimal improvement, confirming the previous configuration was SATA storage-constrained.
-
-### 4.3. What Changed
-
-The previous run on SATA SSD showed I/O serialization at moderate-to-high concurrency. The telemetry revealed:
-- SATA latency and throughput limits causing queue depth bottlenecks
-- Context switching overhead while waiting for slow SATA I/O
-- Threads idling on I/O wait instead of performing productive work
-
-**The Root Cause:** SATA SSD has inherent latency (~100-200μs) and limited concurrent I/O capability compared to NVMe (~10-20μs latency, much higher queue depth).
-
-**The Fix:** Migrating to NVMe storage provided:
-- **10-20x lower latency** per I/O operation
-- **Higher concurrent I/O throughput** (NVMe can handle 10,000+ IOPS easily)
-- **Better queue depth handling** for high-concurrency workloads
-
-The I/O configuration changes (`innodb_io_capacity=10000`, 16 threads) were necessary to allow InnoDB to fully utilize NVMe's capabilities, but the hardware migration was the primary improvement factor.
-
-## 5. Test Environment & Infrastructure
-
-### 5.1. Hardware Specification
+### 4.1. Hardware Specification
 
 #### System Information
 
@@ -287,7 +249,7 @@ The I/O configuration changes (`innodb_io_capacity=10000`, 16 threads) were nece
 - **Total Size**: 2.9 TB
 - **Filesystem**: ext4
 
-### 8.2. Software Configuration
+### 4.2. Software Configuration
 
 #### Operating System
 
@@ -317,7 +279,7 @@ System performance metrics were collected continuously during each benchmark run
 - **Sampling Interval**: 1 second for all tools
 - **Collection Period**: Full duration of each 15-minute test run
 
-### 6.3. Containerization Strategy
+### 4.3. Containerization Strategy
 
 Each MariaDB engine was run as a Docker container using official images from the `mariadb` repository. The host network mode was used to avoid bridge networking overhead. A fresh container was started for each engine/tier combination using the following sequence:
 
@@ -330,7 +292,7 @@ Each MariaDB engine was run as a Docker container using official images from the
 
 This approach ensured that each test run started with a clean state and the correct configuration parameters were applied before benchmark execution.
 
-### 6.4. Buffer Pool Tiers
+### 4.4. Buffer Pool Tiers
 
 With the database size of 24 GB, three InnoDB buffer pool sizes were tested, each representing a distinct workload characteristic:
 
@@ -342,20 +304,11 @@ With the database size of 24 GB, three InnoDB buffer pool sizes were tested, eac
 
 These tiers were selected to evaluate MariaDB performance across different memory pressure scenarios, from heavily disk-constrained (2 GB) to fully memory-resident (32 GB) workloads.
 
-## 6. Database Configuration
+## 5. Database Configuration
 
-All MariaDB servers were configured with production-grade settings optimized for OLTP workloads. The configuration below represents the current (NVMe) run; the previous run on SATA SSD used identical settings except for I/O parameters.
+All database servers were configured with production-grade settings optimized for OLTP workloads. InnoDB I/O parameters were tuned for NVMe storage to utilize its low latency and high throughput capabilities.
 
-**Key Changes from Previous Run (SATA SSD → NVMe):**
-- **Storage Hardware:** SATA SSD → **NVMe** (PRIMARY factor in 6-7x improvement)
-- `innodb_io_capacity`: 2500 → **10000** (tuned for NVMe)
-- `innodb_io_capacity_max`: 5000 → **20000** (tuned for NVMe)
-- `innodb_read_io_threads`: 4 → **16** (tuned for NVMe)
-- `innodb_write_io_threads`: 4 → **16** (tuned for NVMe)
-
-The I/O configuration changes are essential to utilize NVMe's low latency and high throughput capabilities (see Section 3.1).
-
-### 6.1. General Settings
+### 5.1. General Settings
 
 ```
 performance_schema              = OFF
@@ -365,7 +318,7 @@ max_connect_errors              = 1000000
 max_prepared_stmt_count         = 1000000
 ```
 
-### 8.2. Thread Handling
+### 5.2. Thread Handling
 
 **Thread Pool Configuration (mariadb-thp servers):**
 ```
@@ -385,14 +338,14 @@ thread_stack                    = 512K
 back_log                        = 4096
 ```
 
-### 6.3. InnoDB Buffer Pool
+### 5.3. InnoDB Buffer Pool
 
 Buffer pool size varied by tier (see Section 3.4):
 ```
 innodb_buffer_pool_size         = 2G | 12G | 32G
 ```
 
-### 6.4. InnoDB I/O Configuration
+### 5.4. InnoDB I/O Configuration
 
 Optimized for NVMe storage with high concurrency:
 ```
@@ -403,7 +356,7 @@ innodb_write_io_threads         = 16
 innodb_use_native_aio           = ON
 ```
 
-### 6.5. InnoDB Durability & Logging
+### 5.5. InnoDB Durability & Logging
 
 Full ACID compliance with transaction log optimization:
 ```
@@ -414,7 +367,7 @@ innodb_doublewrite              = ON
 sync_binlog                     = 1
 ```
 
-### 6.6. InnoDB Concurrency & OLTP Tuning
+### 5.6. InnoDB Concurrency & OLTP Tuning
 
 ```
 innodb_stats_on_metadata        = OFF
@@ -424,7 +377,7 @@ innodb_rollback_on_timeout      = ON
 innodb_snapshot_isolation       = OFF               # MariaDB 12.x+
 ```
 
-### 6.7. Per-Session Buffers
+### 5.7. Per-Session Buffers
 
 Conservative settings to support high connection counts:
 ```
@@ -436,7 +389,7 @@ tmp_table_size                  = 256M
 max_heap_table_size             = 256M
 ```
 
-### 6.8. Table & File Handles
+### 5.8. Table & File Handles
 
 ```
 table_open_cache                = 65536
@@ -445,7 +398,7 @@ open_files_limit                = 1000000
 table_open_cache_instances      = 64
 ```
 
-### 6.9. Binary Logging
+### 5.9. Binary Logging
 
 Enabled for production-realistic overhead measurement:
 ```
@@ -458,9 +411,9 @@ max_binlog_size                 = 512M
 
 **Note:** The complete configuration file is available in the benchmark logs directory as `TierXG.cnf.txt` for each tested configuration.
 
-## 7. Benchmark Workload
+## 6. Benchmark Workload
 
-### 8.1. Warmup Protocol
+### 6.1. Warmup Protocol
 
 Before each production benchmark run, the database underwent a two-phase warmup sequence to ensure consistent starting conditions:
 
@@ -471,7 +424,7 @@ Before each production benchmark run, the database underwent a two-phase warmup 
 
 **Note:** The proposed warmup values are determined experimentally and are sufficient for the hardware configuration used for the benchmarking. However, in case of much slower hosts the user will need to adjust them by editing scripts.
 
-### 8.2. Measurement Run
+### 6.2. Measurement Run
 
 Following the warmup phase, each benchmark execution ran for **900 seconds (15 minutes)** with performance metrics captured at 1-second granularity. During execution, system-level telemetry tools (iostat, vmstat, mpstat, dstat) collected resource utilization data in parallel.
 
@@ -489,21 +442,21 @@ The validation dataset was intentionally excluded from publication to maintain d
 
 **Known Limitation:** While short-term metric stability (15 minutes) provides confidence in measurement consistency, it does not entirely eliminate the possibility of longer-term background activity such as adaptive flushing, change buffer merges, or checkpoint behavior that might emerge during extended multi-day operations. The chosen measurement window represents a balance between statistical confidence and practical benchmarking constraints.
 
-## 8. Metrics & Reporting
+## 7. Metrics & Reporting
 
-### 8.1. Primary Metrics
+### 7.1. Primary Metrics
 
 | Metric | Definition |
 |--------|------------|
 | **TPS** | Transactions per second (complete BEGIN/COMMIT cycles) |
 
-### 8.2. Derived Metrics
+### 7.2. Derived Metrics
 
 Performance analysis includes:
 - **TPS gain relative to additional RAM**: Throughput improvement when increasing `innodb_buffer_pool_size` from one tier to another
 - **TPS gain relative to thread count increase**: Scalability characteristics as concurrent client connections grow
 
-### 8.3. Output Files
+### 7.3. Output Files
 
 **Per-run telemetry files:**
 - `.sysbench.txt` — Sysbench benchmark results
@@ -518,122 +471,7 @@ Performance analysis includes:
 - `.status.txt` — Server status (`SHOW STATUS`)
 - `pt-mysql-summary.txt` — Percona Toolkit system summary
 
-## 9. Measurement Results
-
-This section presents throughput measurements from the current (tuned) run. The tables and graphs show MariaDB 11.8.6 and 12.2.2 with the optimized I/O configuration. For before/after comparisons against the previous run (MariaDB 11.4.10 and 12.1.2 with `innodb_io_capacity=2500`), refer to Section 3.1.
-
-**Organization:**
-- Results are grouped by memory tier (2GB, 12GB, 32GB)
-- Each tier includes performance tables, graphs, and brief thread pool analysis
-- Thread pool analysis is secondary — the primary story is the I/O configuration improvement
-
-**Reading the Results:**
-- Color-coded bars show relative performance within each memory tier
-- MariaDB versions ending in "-thp" indicate thread pool enabled
-- Focus on the baseline (non-thread-pool) results to understand the I/O tuning impact
-
-### 9.1. Performance Summary Tables
-
-The following tables show TPS (Transactions Per Second) values for each configuration. Color coding indicates relative performance within each memory tier:
-- **Green bars**: High performance relative to other configurations at the same thread count
-- **Yellow/Orange bars**: Mid-range performance
-- **Red bars**: Lower performance relative to other configurations
-
-Bar length is proportional to the actual value relative to the maximum in each column, making it easy to visually compare performance across different servers at the same concurrency level.
-
-### 9.2. 2GB Buffer Pool Results
-
-#### 9.2.1. Performance Table
-
-![TPS Table - 2GB Buffer Pool](graphs_out/table_tps_2g.png)
-
-#### 9.2.2. Throughput Graph
-
-![TPS Graph - 2GB Buffer Pool](graphs_out/throughput_tps_2g.png)
-
-#### 9.2.3. Thread Pool Analysis (2GB - I/O Bound)
-
-*Note: This is a secondary experiment. The primary performance improvement came from migrating to NVMe storage (see Section 3.1).*
-
-**Thread Pool Effect Summary:**
-
-| Concurrency | Baseline | Thread Pool | Delta | Interpretation |
-|-------------|----------|-------------|-------|----------------|
-| 1-16 threads | 142 TPS | 138 TPS | -3% | Minor overhead at low concurrency |
-| 64 threads | 4,199 TPS | ~4,200 TPS | 0% | Performance parity |
-| 128 threads | 1,099 TPS | 657 TPS | -40% | Performance cliff still visible |
-| 512 threads | 266 TPS | 587 TPS | **+121%** | Thread pool prevents extreme thrashing |
-
-**Key Observation:**
-
-Despite NVMe storage, the baseline configuration still experiences a severe performance cliff at 128 threads (4,199 → 1,099 TPS, -74% drop). System metrics show this is due to lock contention around the undersized 2GB buffer pool, not storage speed:
-- CPU drops from 73% active (64 threads) to 22% active (128 threads)
-- I/O bandwidth collapses from 1,648 MB/s to 410 MB/s despite low NVMe utilization
-- Threads idle waiting for buffer pool locks rather than performing productive I/O
-
-Thread pool helps at extreme oversubscription (512 threads) by limiting active threads to 80, reducing lock contention. However, the better solution is to **increase buffer pool size** rather than adding thread pool — the 12GB and 32GB configurations don't exhibit this pathology.
-
-### 9.3. 12GB Buffer Pool Results
-
-#### 9.3.1. Performance Table
-
-![TPS Table - 12GB Buffer Pool](graphs_out/table_tps_12g.png)
-
-#### 9.3.2. Throughput Graph
-
-![TPS Graph - 12GB Buffer Pool](graphs_out/throughput_tps_12g.png)
-
-#### 9.3.3. Thread Pool Analysis (12GB - Mixed Workload)
-
-*Note: This is a secondary experiment. The primary performance improvement came from migrating to NVMe storage (see Section 3.1).*
-
-**Thread Pool Effect Summary:**
-
-| Concurrency | Baseline (11.8.6) | Thread Pool | Delta | Baseline (12.2.2) | Thread Pool | Delta |
-|-------------|-------------------|-------------|-------|-------------------|-------------|-------|
-| 1-16 threads | 226 TPS | 215 TPS | -5% | 226 TPS | 213 TPS | -6% |
-| 64 threads | 7,302 TPS | 7,119 TPS | -3% | 7,364 TPS | 7,143 TPS | -3% |
-| 128 threads | 3,635 TPS | 4,234 TPS | +16% | 6,080 TPS | 5,455 TPS | -10% |
-| 512 threads | 727 TPS | 1,302 TPS | **+79%** | 704 TPS | 1,285 TPS | **+83%** |
-
-**Key Observations:**
-
-1. **Version-Specific Behavior:** MariaDB 12.2.2 baseline handles 128 threads significantly better than 11.8.6 (6,080 vs 3,635 TPS) due to improved concurrent I/O handling. At this concurrency, 12.2.2 doesn't need thread pool — it already maintains high CPU utilization (43%) and disk bandwidth (1.77 GB/s).
-
-2. **Thread Pool Value Shifts to Extreme Oversubscription:** Thread pool provides minimal benefit until 256+ threads, where both versions see ~80% throughput gains at 512 threads.
-
-3. **Recommendation:** For mixed I/O workloads, **upgrade to MariaDB 12.2.2 first** (67% better than 11.8.6 at 128 threads). Only enable thread pool if you regularly operate at 256+ concurrent connections.
-
-### 9.4. 32GB Buffer Pool Results
-
-#### 9.4.1. Performance Table
-
-![TPS Table - 32GB Buffer Pool](graphs_out/table_tps_32g.png)
-
-#### 9.4.2. Throughput Graph
-
-![TPS Graph - 32GB Buffer Pool](graphs_out/throughput_tps_32g.png)
-
-#### 9.4.3. Thread Pool Analysis (32GB - Memory Bound)
-
-*Note: This is a secondary experiment. With memory-resident workloads, storage speed is not a bottleneck.*
-
-**Thread Pool Effect Summary:**
-
-| Concurrency | Baseline (11.8.6) | Thread Pool | Delta |
-|-------------|-------------------|-------------|-------|
-| 1-16 threads | 517 TPS | 412 TPS | -20% |
-| 64 threads | 8,298 TPS | 7,869 TPS | -5% |
-| 128 threads | **10,694 TPS** | 10,232 TPS | -4% |
-| 512 threads | 3,921 TPS | 3,318 TPS | -15% |
-
-**Key Observation:**
-
-When the entire working set fits in memory, **thread pool provides no benefit**. The baseline configuration achieves peak performance (~10,700 TPS) at 128 threads without thread pool. Both configurations degrade beyond 128 threads due to lock contention, which thread pool cannot solve.
-
-**Recommendation:** For memory-resident OLTP workloads, skip thread pool entirely. Focus on lock optimization and query tuning instead.
-
-## 10. Limitations and Considerations
+## 8. Limitations and Considerations
 
 This benchmark provides valuable performance insights but operates under specific constraints that should be considered when interpreting results:
 
@@ -664,7 +502,7 @@ This benchmark provides valuable performance insights but operates under specifi
 
 These limitations do not diminish the value of the findings but provide important context for applying these results to production scenarios. The relative performance differences observed between configurations remain instructive even as absolute numbers may vary in different deployment contexts.
 
-## 11. Reproducibility
+## 9. Reproducibility
 
 This benchmark is designed to be reproducible on compatible systems. The testing framework and automation scripts are available in the project repository.
 
