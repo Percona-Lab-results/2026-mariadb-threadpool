@@ -29,7 +29,6 @@ SERVER_MAPPING = {
     'mariadb-thp/12.2.2-MariaDB-ubu2404': 'MariaDB 12.2.2 (Thread Pool)',
     'mysql/8.4.8': 'MySQL 8.4.8',
     'mysql/9.7.0-er2': 'MySQL 9.7.0-er2',
-    'percona/8.4.8-8': 'Percona Server 8.4.8',
 }
 
 # Color scheme for different servers (vibrant colors like reference)
@@ -40,7 +39,6 @@ COLORS = {
     'MariaDB 12.2.2 (Thread Pool)': '#FFB703',  # Yellow/Gold
     'MySQL 8.4.8': '#457B9D',           # Blue
     'MySQL 9.7.0-er2': '#6A4C93',       # Purple
-    'Percona Server 8.4.8': '#118AB2',  # Cyan-blue
 }
 
 # Line styles - all solid lines like reference
@@ -51,7 +49,6 @@ LINE_STYLES = {
     'MariaDB 12.2.2 (Thread Pool)': '-',
     'MySQL 8.4.8': '-',
     'MySQL 9.7.0-er2': '-',
-    'Percona Server 8.4.8': '-',
 }
 
 MARKER_STYLES = {
@@ -61,7 +58,6 @@ MARKER_STYLES = {
     'MariaDB 12.2.2 (Thread Pool)': 'D',  # Diamond
     'MySQL 8.4.8': 's',              # Square
     'MySQL 9.7.0-er2': '^',          # Triangle up
-    'Percona Server 8.4.8': 'v',     # Triangle down
 }
 
 # Whether markers should be filled (True) or outlined (False)
@@ -72,7 +68,6 @@ MARKER_FILLED = {
     'MariaDB 12.2.2 (Thread Pool)': False,  # Outlined - Yellow diamond
     'MySQL 8.4.8': False,            # Outlined - Blue square
     'MySQL 9.7.0-er2': True,         # Solid - Purple triangle
-    'Percona Server 8.4.8': False,   # Outlined - Cyan triangle
 }
 
 
