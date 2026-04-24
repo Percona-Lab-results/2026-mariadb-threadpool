@@ -156,12 +156,12 @@ li { margin: 8px 0; }
 <ul>
 <li><strong>MariaDB's substantial lead</strong> (100%+ faster) is achieved through more aggressive I/O strategies:</li>
 </ul>
-<p>  - <strong>2.3x more read IOPS</strong> than MySQL (105K vs 46K reads/sec) with the same 16KB page size</p>
+<p>  - <strong>2.3x more read IOPS</strong> than MySQL (105K vs 46K reads/sec)</p>
 <p>  - <strong>87% NVMe utilization</strong> vs 75-78% for MySQL, indicating better I/O parallelism</p>
 <p>  - Higher I/O wait time (48% vs 14%) but achieves 2x throughput by keeping NVMe busier</p>
 <p>  - This demonstrates MariaDB's superior ability to issue parallel I/O operations under memory pressure</p>
 <ul>
-<li><strong>MySQL 9.7.0</strong> shows minimal improvement over 8.4.8 (+3%) in I/O-constrained workloads, suggesting I/O optimization wasn't a focus area for this release</li>
+<li><strong>MySQL 9.7.0</strong> shows minimal improvement over 8.4.8 (+3%) in I/O-constrained workloads</li>
 </ul>
 <br>
 <p><strong>Important issue: Performance cliff at 128 threads affects all servers:</strong></p>
@@ -169,7 +169,6 @@ li { margin: 8px 0; }
 <li>MariaDB: 4,199 → 1,099 TPS (-74% drop)</li>
 <li>All servers experience significant degradation due to lock contention around undersized buffer pools</li>
 <li>CPU utilization collapses from 73% to 22% as threads idle waiting for buffer pool locks</li>
-<li><strong>Root cause:</strong> Buffer pool lock contention, not storage speed. Solution is to increase buffer pool size, not enable thread pool.</li>
 </ul>
 <h4>3.1.3. Mixed I/O Workloads (12GB Buffer Pool) - Version-Dependent Behavior</h4>
 <p><strong>Winners vary by concurrency level: MariaDB leads at 64 threads, MySQL 9.7.0 leads at 128 threads</strong></p>
@@ -192,16 +191,13 @@ li { margin: 8px 0; }
 <br>
 <p><strong>Key observations:</strong></p>
 <ul>
-<li><strong>MariaDB 11.8.6 has suboptimal concurrency scaling</strong> at 128+ threads with mixed I/O workloads (drops 50% below competition)</li>
-<li><strong>MariaDB 12.2.2 resolves this performance limitation</strong> with 67% improvement over 11.8.6, achieving competitive performance through improved concurrent I/O handling</li>
-<li><strong>MySQL 9.7.0 excels at high concurrency</strong> in mixed workloads, taking the lead at 128+ threads</li>
+<li><strong>All database engines lose throughput past 128 threads</strong> in mixed I/O workloads — none scale cleanly beyond this point, though the severity of the drop varies by version</li>
 </ul>
 <h4>3.1.4. Summary across workloads</h4>
 <p><strong>Workload-specific observations:</strong></p>
 <br>
 <p>1. <strong>Memory-resident workloads (32GB+):</strong> </p>
 <p>   - <strong>Winner: MariaDB 11.8.6</strong> (+14-28% vs all competitors)</p>
-<p>   - MySQL 9.7.0 is the best non-MariaDB option (+12% vs MySQL 8.4.8)</p>
 <br>
 <p>2. <strong>I/O-bound workloads (small buffer pools):</strong></p>
 <p>   - <strong>Winner: MariaDB 11.8.6</strong> (+100%+ vs MySQL)</p>
@@ -218,450 +214,20 @@ li { margin: 8px 0; }
 <li><strong>MySQL 8.4.8:</strong> Consistently trails MySQL 9.7.0 by 3-12% across all workloads</li>
 </ul>
 <h3>3.2. Thread Pool Findings (Secondary Experiment)</h3>
-<p>Thread pool was tested on NVMe storage but did not provide significant additional value:</p>
-<br>
-<p><strong>When Thread Pool Helped (Very High Oversubscription):</strong></p>
-<ul>
-<li><strong>At 512 threads with 2GB buffer:</strong> +121% throughput (587 TPS vs 266 TPS baseline for MariaDB 11.8.6)</li>
-<li><strong>At 512 threads with 12GB buffer:</strong> +79-83% throughput (1,285-1,302 TPS vs 704-727 TPS baseline)</li>
-</ul>
-<br>
-<p>Thread pool helps at very high oversubscription (512 threads) by limiting active threads to 80, reducing lock contention. However, these scenarios are unusual — normal production workloads should not operate at this level of oversubscription.</p>
-<br>
-<p><strong>When Thread Pool Did Not Help:</strong></p>
-<ul>
-<li><strong>Low concurrency (1-32 threads):</strong> -3% to -20% overhead from coordination costs</li>
-<li><strong>Optimal concurrency (64-128 threads):</strong> -3% to -10% performance penalty in most cases</li>
-<li><strong>Memory-resident workloads (32GB buffer):</strong> Thread pool provides no benefit across all concurrency levels. Baseline achieves peak performance (~10,700 TPS) at 128 threads without thread pool</li>
-</ul>
-<br>
-<p><strong>Specific Performance Impact:</strong></p>
-<br>
-<table width="100%" border="1" cellpadding="1" cellspacing="0" style="width: 100% !important;">
-<thead><tr>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Memory Tier</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Concurrency</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Baseline</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Thread Pool</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Delta</th>
-</tr></thead><tbody>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;">2GB</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">64 threads</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">4,199 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">~4,200 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">0%</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;">2GB</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">128 threads</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">1,099 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">657 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">-40%</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;">12GB</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">64 threads</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">7,302 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">7,119 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">-3%</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;">12GB</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">128 threads (11.8.6)</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">3,635 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">4,234 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">+16%</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;">12GB</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">128 threads (12.2.2)</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">6,080 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">5,455 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">-10%</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;">32GB</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">128 threads</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">10,694 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">10,232 TPS</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">-4%</td>
-</tr>
-</tbody></table>
-<br>
-<p><strong>Possible improvements:</strong></p>
-<p>1. <strong>For I/O-bound workloads:</strong> Increase buffer pool size rather than enabling thread pool — the 2GB configuration's performance cliff is due to buffer pool lock contention, which thread pool cannot solve effectively</p>
-<p>2. <strong>For mixed I/O workloads:</strong> Upgrade to MariaDB 12.2.2 first (67% better than 11.8.6 at 128 threads). Only enable thread pool if regularly operating at 256+ concurrent connections</p>
-<p>3. <strong>For memory-resident workloads:</strong> Skip thread pool entirely. Focus on lock optimization and query tuning instead</p>
+<p>Thread pool was tested on NVMe storage but did not provide significant additional performance changes.</p>
+<p>Minor throughput variations were observed, but these are likely within the range of normal measurement noise.</p>
 <h2>4. Test Environment & Infrastructure</h2>
-<h3>4.1. Hardware Specification</h3>
-<h4>System Information</h4>
-<ul>
-<li><strong>Platform</strong>: Linux</li>
-<li><strong>Release</strong>: Ubuntu 24.04 LTS (noble)</li>
-<li><strong>Kernel</strong>: 6.8.0-60-generic</li>
-<li><strong>Architecture</strong>: CPU = 64-bit, OS = 64-bit</li>
-<li><strong>Virtualized</strong>: No virtualization detected</li>
-</ul>
-<h4>CPU</h4>
-<ul>
-<li><strong>Architecture</strong>: x86_64</li>
-<li><strong>CPU op-mode(s)</strong>: 32-bit, 64-bit</li>
-<li><strong>Byte Order</strong>: Little Endian</li>
-<li><strong>Processors</strong>: physical = 2, cores = 40, virtual = 80, hyperthreading = yes</li>
-<li><strong>Sockets</strong>: 2</li>
-<li><strong>Cores per socket</strong>: 20</li>
-<li><strong>Threads per core</strong>: 2</li>
-<li><strong>Model</strong>: 80x Intel(R) Xeon(R) Gold 6230 CPU @ 2.10GHz</li>
-<li><strong>Base Frequency</strong>: 2.10GHz</li>
-<li><strong>Max Frequency</strong>: 3.90GHz</li>
-<li><strong>Cache</strong>: 80x 28160 KB</li>
-</ul>
-<h4>NUMA</h4>
-<ul>
-<li><strong>NUMA Nodes</strong>: 2</li>
-<li><strong>Node 0</strong>: 95288 MB (CPUs: 0-19, 40-59)</li>
-<li><strong>Node 1</strong>: 96748 MB (CPUs: 20-39, 60-79)</li>
-</ul>
-<h4>Memory</h4>
-<ul>
-<li><strong>Total Memory</strong>: 187.5G</li>
-<li><strong>Swap Size</strong>: 8.0G</li>
-</ul>
-<h4>Storage Configuration</h4>
-<p><strong>Primary Storage (SDA - System Disk)</strong></p>
-<ul>
-<li><strong>Device</strong>: /dev/sda</li>
-<li><strong>Total Size</strong>: 894.3 GB</li>
-<li><strong>Filesystem</strong>: ext4</li>
-</ul>
-<br>
-<p><strong>Secondary Storage (NVMe)</strong></p>
-<ul>
-<li><strong>Device</strong>: /dev/nvme0n1</li>
-<li><strong>Total Size</strong>: 2.9 TB</li>
-<li><strong>Filesystem</strong>: ext4</li>
-</ul>
-<h3>4.2. Software Configuration</h3>
-<h4>Operating System</h4>
-<ul>
-<li><strong>Distribution</strong>: Ubuntu 24.04 LTS (noble)</li>
-<li><strong>Kernel</strong>: 6.8.0-60-generic</li>
-<li><strong>Architecture</strong>: 64-bit</li>
-</ul>
-<h4>Containerization</h4>
-<ul>
-<li><strong>Docker</strong>: Used for database server deployment</li>
-<li><strong>Network Mode</strong>: <code>--network host</code> (native host networking, no NAT overhead)</li>
-</ul>
-<h4>Benchmark Tool</h4>
-<ul>
-<li><strong>Sysbench</strong>: Version 1.0.20</li>
-<li><strong>LuaJIT</strong>: 2.1.0-beta3 (system)</li>
-<li><strong>Test Script</strong>: OLTP Read-Write (built-in)</li>
-</ul>
-<h4>Telemetry Tools</h4>
-<p>System performance metrics were collected continuously during each benchmark run:</p>
-<br>
-<ul>
-<li><strong>iostat</strong>: I/O statistics monitoring</li>
-<li><strong>vmstat</strong>: Virtual memory and system statistics</li>
-<li><strong>mpstat</strong>: Multi-processor statistics</li>
-<li><strong>dstat</strong>: Combined system resource statistics</li>
-<li><strong>Sampling Interval</strong>: 1 second for all tools</li>
-<li><strong>Collection Period</strong>: Full duration of each 15-minute test run</li>
-</ul>
-<h3>4.3. Containerization Strategy</h3>
-<p>Each MariaDB engine was run as a Docker container using official images from the <code>mariadb</code> repository. The host network mode was used to avoid bridge networking overhead. A fresh container was started for each engine/tier combination using the following sequence:</p>
-<br>
-<p>1. <strong>Stop and remove</strong> any existing benchmark container</p>
-<p>2. <strong>Detect actual server version</strong> by connecting and running <code>SELECT VERSION()</code></p>
-<p>3. <strong>Generate a version-specific configuration file</strong> (see Section 3)</p>
-<p>4. <strong>Restart the container</strong> with the new configuration mounted</p>
-<p>5. <strong>Wait for the server to become ready</strong> (mariadb-admin ping loop)</p>
-<p>6. <strong>Verify InnoDB buffer pool size</strong> matches the intended tier (hard abort on mismatch)</p>
-<br>
-<p>This approach ensured that each test run started with a clean state and the correct configuration parameters were applied before benchmark execution.</p>
-<h3>4.4. Buffer Pool Tiers</h3>
-<p>With the database size of 24 GB, three InnoDB buffer pool sizes were tested, each representing a distinct workload characteristic:</p>
-<br>
-<table width="100%" border="1" cellpadding="1" cellspacing="0" style="width: 100% !important;">
-<thead><tr>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Tier (innodb_buffer_pool_size)</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Workload Character</th>
-</tr></thead><tbody>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;"><strong>2 GB</strong></td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; "><strong>I/O bound</strong> — dataset substantially exceeds buffer pool (1:12 ratio); heavy read amplification</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;"><strong>12 GB</strong></td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; "><strong>Mixed</strong> — partial dataset fits in memory (1:2 ratio); realistic production scenario</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;"><strong>32 GB</strong></td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; "><strong>In-memory</strong> — full working set fits; CPU and locking are primary bottlenecks</td>
-</tr>
-</tbody></table>
-<br>
-<p>These tiers were selected to evaluate MariaDB performance across different memory pressure scenarios, from heavily disk-constrained (2 GB) to fully memory-resident (32 GB) workloads.</p>
+<p>See <a href="ENVIRONMENT.md">ENVIRONMENT.md</a> for hardware specifications, software configuration, containerization strategy, and buffer pool tier definitions.</p>
 <h2>5. Database Configuration</h2>
-<p>All database servers were configured with production-grade settings optimized for OLTP workloads. InnoDB I/O parameters were tuned for NVMe storage to utilize its low latency and high throughput capabilities.</p>
-<h3>5.1. General Settings</h3>
-<pre><code>
-performance_schema              = OFF
-skip-name-resolve               = ON
-max_connections                 = 2000
-max_connect_errors              = 1000000
-max_prepared_stmt_count         = 1000000
-</code></pre>
-<h3>5.2. Thread Handling</h3>
-<p><strong>Thread Pool Configuration (mariadb-thp servers):</strong></p>
-<pre><code>
-thread_handling                 = pool-of-threads
-thread_pool_size                = 80                # match physical core count
-thread_pool_max_threads         = 2000
-thread_stack                    = 512K
-thread_cache_size               = 256
-back_log                        = 4096
-</code></pre>
-<p><strong>Default Configuration (mariadb servers):</strong></p>
-<pre><code>
-thread_handling                 = one-thread-per-connection
-thread_cache_size               = 256
-thread_stack                    = 512K
-back_log                        = 4096
-</code></pre>
-<h3>5.3. InnoDB Buffer Pool</h3>
-<p>Buffer pool size varied by tier (see Section 3.4):</p>
-<pre><code>
-innodb_buffer_pool_size         = 2G | 12G | 32G
-</code></pre>
-<h3>5.4. InnoDB I/O Configuration</h3>
-<p>Optimized for NVMe storage with high concurrency:</p>
-<pre><code>
-innodb_io_capacity              = 10000
-innodb_io_capacity_max          = 20000
-innodb_read_io_threads          = 16
-innodb_write_io_threads         = 16
-innodb_use_native_aio           = ON
-</code></pre>
-<h3>5.5. InnoDB Durability & Logging</h3>
-<p>Full ACID compliance with transaction log optimization:</p>
-<pre><code>
-innodb_log_file_size            = 4G
-innodb_log_buffer_size          = 256M
-innodb_flush_log_at_trx_commit  = 1                 # full ACID
-innodb_doublewrite              = ON
-sync_binlog                     = 1
-</code></pre>
-<h3>5.6. InnoDB Concurrency & OLTP Tuning</h3>
-<pre><code>
-innodb_stats_on_metadata        = OFF
-innodb_open_files               = 65536
-innodb_lock_wait_timeout        = 50
-innodb_rollback_on_timeout      = ON
-innodb_snapshot_isolation       = OFF               # MariaDB 12.x+
-</code></pre>
-<h3>5.7. Per-Session Buffers</h3>
-<p>Conservative settings to support high connection counts:</p>
-<pre><code>
-sort_buffer_size                = 4M
-join_buffer_size                = 4M
-read_buffer_size                = 2M
-read_rnd_buffer_size            = 4M
-tmp_table_size                  = 256M
-max_heap_table_size             = 256M
-</code></pre>
-<h3>5.8. Table & File Handles</h3>
-<pre><code>
-table_open_cache                = 65536
-table_definition_cache          = 65536
-open_files_limit                = 1000000
-table_open_cache_instances      = 64
-</code></pre>
-<h3>5.9. Binary Logging</h3>
-<p>Enabled for production-realistic overhead measurement:</p>
-<pre><code>
-log_bin                         = /var/lib/mysql/mysql-bin
-binlog_format                   = ROW
-binlog_row_image                = MINIMAL
-binlog_cache_size               = 4M
-max_binlog_size                 = 512M
-</code></pre>
-<p><strong>Note:</strong> The complete configuration file is available in the benchmark logs directory as <code>TierXG.cnf.txt</code> for each tested configuration.</p>
+<p>See <a href="CONFIGURATION.md">CONFIGURATION.md</a> for the full set of server settings used across all tested configurations (general settings, thread handling, InnoDB tuning, per-session buffers, and binary logging).</p>
 <h2>6. Benchmark Workload</h2>
-<h3>6.1. Warmup Protocol</h3>
-<p>Before each production benchmark run, the database underwent a two-phase warmup sequence to ensure consistent starting conditions:</p>
-<br>
-<table width="100%" border="1" cellpadding="1" cellspacing="0" style="width: 100% !important;">
-<thead><tr>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Phase</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Duration</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Purpose</th>
-</tr></thead><tbody>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;"><strong>Warmup A — Read-Only</strong></td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">180 s (3 min)</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">Populate buffer pool with hot pages</td>
-</tr>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;"><strong>Warmup B — Read-Write</strong></td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">600 s (10 min)</td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">Steady-state redo log & dirty page ratio (skipped for RO)</td>
-</tr>
-</tbody></table>
-<br>
-<p><strong>Note:</strong> The proposed warmup values are determined experimentally and are sufficient for the hardware configuration used for the benchmarking. However, in case of much slower hosts the user will need to adjust them by editing scripts.</p>
-<h3>6.2. Measurement Run</h3>
-<p>Following the warmup phase, each benchmark execution ran for <strong>900 seconds (15 minutes)</strong> with performance metrics captured at 1-second granularity. During execution, system-level telemetry tools (iostat, vmstat, mpstat, dstat) collected resource utilization data in parallel.</p>
-<h4>Data Collection Strategy</h4>
-<p>The results presented in this report represent a <strong>single measurement per configuration</strong>. To validate result stability and confirm steady-state operation, we conducted selective repeat runs (2nd and 3rd iterations) across representative server and memory tier combinations. These validation runs consistently confirmed the reproducibility of the initial measurements.</p>
-<br>
-<p>The validation dataset was intentionally excluded from publication to maintain data accessibility. Given that each baseline measurement produces multiple output files (sysbench results, iostat, vmstat, mpstat, dstat, and configuration logs), the inclusion of validation runs would have multiplied the dataset size significantly, creating an unwieldy collection of thousands of files that would be difficult to navigate and distribute.</p>
-<h4>Steady-State Verification</h4>
-<p><strong>Read Operations:</strong> Steady state for read workloads was verified by monitoring InnoDB buffer pool metrics and OS-level I/O read counters. The system was considered stable when physical reads dropped to near-zero after the warmup period, indicating the working set was fully cached.</p>
-<br>
-<p><strong>Write Operations:</strong> For write-intensive phases, stability was determined by observing transaction throughput and latency metrics until they reached consistent values without significant drift.</p>
-<br>
-<p><strong>Known Limitation:</strong> While short-term metric stability (15 minutes) provides confidence in measurement consistency, it does not entirely eliminate the possibility of longer-term background activity such as adaptive flushing, change buffer merges, or checkpoint behavior that might emerge during extended multi-day operations. The chosen measurement window represents a balance between statistical confidence and practical benchmarking constraints.</p>
+<p>See <a href="WORKLOAD.md">WORKLOAD.md</a> for the warmup protocol, measurement run parameters, data collection strategy, and steady-state verification procedures.</p>
 <h2>7. Metrics & Reporting</h2>
-<h3>7.1. Primary Metrics</h3>
-<table width="100%" border="1" cellpadding="1" cellspacing="0" style="width: 100% !important;">
-<thead><tr>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Metric</th>
-<th style="border: 1px solid #333; padding: 1px 2px; background-color: #3498db; color: white; font-weight: bold; text-align: center;">Definition</th>
-</tr></thead><tbody>
-<tr>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; font-size: 15px;"><strong>TPS</strong></td>
-<td style="border: 1px solid #333; padding: 1px 2px; text-align: left; vertical-align: top; ">Transactions per second (complete BEGIN/COMMIT cycles)</td>
-</tr>
-</tbody></table>
-<h3>7.2. Derived Metrics</h3>
-<p>Performance analysis includes:</p>
-<ul>
-<li><strong>TPS gain relative to additional RAM</strong>: Throughput improvement when increasing <code>innodb_buffer_pool_size</code> from one tier to another</li>
-<li><strong>TPS gain relative to thread count increase</strong>: Scalability characteristics as concurrent client connections grow</li>
-</ul>
-<h3>7.3. Output Files</h3>
-<p><strong>Per-run telemetry files:</strong></p>
-<ul>
-<li><code>.sysbench.txt</code> — Sysbench benchmark results</li>
-<li><code>.iostat.txt</code> — I/O statistics</li>
-<li><code>.vmstat.txt</code> — Virtual memory and system statistics</li>
-<li><code>.mpstat.txt</code> — Multi-processor utilization</li>
-<li><code>.dstat.txt</code> — Combined system resource monitoring</li>
-</ul>
-<br>
-<p><strong>Per-server configuration files:</strong></p>
-<ul>
-<li><code>.cnf.txt</code> — MariaDB configuration file</li>
-<li><code>.vars.txt</code> — Server variables (<code>SHOW VARIABLES</code>)</li>
-<li><code>.status.txt</code> — Server status (<code>SHOW STATUS</code>)</li>
-<li><code>pt-mysql-summary.txt</code> — Percona Toolkit system summary</li>
-</ul>
+<p>See <a href="METRICS.md">METRICS.md</a> for primary and derived metrics definitions and the list of output files produced by each benchmark run.</p>
 <h2>8. Limitations and Considerations</h2>
-<p>This benchmark provides valuable performance insights but operates under specific constraints that should be considered when interpreting results:</p>
-<br>
-<p><strong>Single-Host Architecture:</strong></p>
-<ul>
-<li>All measurements reflect single-node performance only</li>
-<li>Replication topologies, cluster configurations, and proxy layers introduce additional overhead not captured in these tests</li>
-<li>Network latency and multi-node coordination costs are not represented in these results</li>
-</ul>
-<br>
-<p><strong>Synthetic Workload Characteristics:</strong></p>
-<ul>
-<li>The sysbench oltp_read_write workload provides a standardized OLTP approximation but does not capture the complexity of real application query patterns</li>
-<li>Actual production workloads exhibit varying query distributions, transaction sizes, and access patterns</li>
-<li>Results should be interpreted as directional indicators rather than absolute predictions of production performance</li>
-</ul>
-<br>
-<p><strong>Data Distribution Patterns:</strong></p>
-<ul>
-<li>Benchmark uses uniformly distributed random data access across the entire dataset</li>
-<li>Real-world applications typically exhibit non-uniform access patterns (hot rows, temporal locality, geographic clustering)</li>
-<li>Cache hit rates and I/O patterns may differ significantly in production environments with skewed data access</li>
-</ul>
-<br>
-<p><strong>Dataset Size Constraints:</strong></p>
-<ul>
-<li>24GB working set is representative of small to medium database sizes</li>
-<li>Enterprise databases often operate at much larger scales (hundreds of GB to TB range)</li>
-<li>Larger datasets may exhibit different performance characteristics, particularly regarding buffer pool efficiency and I/O patterns</li>
-</ul>
-<br>
-<p><strong>Controlled Environment:</strong></p>
-<ul>
-<li>Tests run on dedicated hardware with minimal background processes</li>
-<li>Production environments experience variable load patterns, competing workloads, and system maintenance activities</li>
-<li>Real-world performance may be affected by factors not present in this controlled benchmark environment</li>
-</ul>
-<br>
-<p>These limitations do not diminish the value of the findings but provide important context for applying these results to production scenarios. The relative performance differences observed between configurations remain instructive even as absolute numbers may vary in different deployment contexts.</p>
+<p>See <a href="LIMITATIONS.md">LIMITATIONS.md</a> for the constraints to consider when interpreting these results, including single-host scope, synthetic workload characteristics, data distribution assumptions, and dataset size.</p>
 <h2>9. Reproducibility</h2>
-<p>This benchmark is designed to be reproducible on compatible systems. The testing framework and automation scripts are available in the project repository.</p>
-<br>
-<p><strong>System Requirements:</strong></p>
-<br>
-<p><strong>Operating System:</strong></p>
-<ul>
-<li>Ubuntu 24.04 LTS (current supported platform)</li>
-<li>Other Linux distributions may work but are not officially tested</li>
-</ul>
-<br>
-<p><strong>Software Prerequisites:</strong></p>
-<br>
-<p>Install required packages:</p>
-<pre><code>
-sudo apt install docker.io sysstat sysbench mysql-client dstat -y
-</code></pre>
-<p><strong>Docker Group Permissions:</strong></p>
-<br>
-<p>Add your user to the docker group to run containers without sudo:</p>
-<pre><code>
-sudo usermod -aG docker $USER
-</code></pre>
-<p>After running this command, log out and back in, or run <code>newgrp docker</code> to activate the new group membership without restarting your session.</p>
-<br>
-<p><strong>Root Access Requirement:</strong></p>
-<br>
-<p>The benchmark scripts require sudo privileges for:</p>
-<ul>
-<li>CPU frequency governor configuration (<code>cpupower</code>)</li>
-<li>System telemetry collection (iostat, vmstat, mpstat, dstat)</li>
-<li>Configuration file management</li>
-</ul>
-<br>
-<p>Your user account must have sudo access to run the benchmark suite.</p>
-<br>
-<p><strong>Running the Benchmarks:</strong></p>
-<br>
-<p>The repository includes automated scripts for running the complete benchmark suite:</p>
-<br>
-<p><strong>Full benchmark suite</strong> (both thread pool configurations):</p>
-<pre><code>
-./run_all.sh
-</code></pre>
-<p>This script automatically:</p>
-<ul>
-<li>Installs additional dependencies</li>
-<li>Runs system profiling tools</li>
-<li>Executes benchmarks for MariaDB 11.8.6 and 12.2.2</li>
-<li>Tests both default (one-thread-per-connection) and thread pool configurations</li>
-<li>Generates separate result directories for each configuration</li>
-</ul>
-<br>
-<p><strong>Hardware Considerations:</strong></p>
-<br>
-<p>While the benchmark can run on various hardware configurations, results will vary significantly based on:</p>
-<ul>
-<li>CPU core count (affects thread pool sizing and concurrency behavior)</li>
-<li>Available RAM (determines realistic buffer pool tiers)</li>
-<li>Storage performance (critical for I/O-bound workloads)</li>
-</ul>
-<br>
-<p>The thread pool size in the default configuration is set to 80 threads to match the 80-thread (40 physical core) test system. Adjust <code>thread_pool_size</code> in <code>run_metrics.sh</code> to match your system's physical core count for optimal results.</p>
+<p>See <a href="REPRODUCIBILITY.md">REPRODUCIBILITY.md</a> for system requirements, prerequisites, and instructions for running the benchmark suite.</p>
 <br>
 </body>
 </html>
